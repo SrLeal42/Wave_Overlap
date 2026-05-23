@@ -5,36 +5,14 @@ import (
 	"fmt"
 )
 
-// ExtractionResult é a saída serializada para o JS.
-type ExtractionResult struct {
-	PatternSize int                 `json:"patternSize"`
-	Patterns    [][]uint8           `json:"patterns"`    // cada padrão é um array flat PxP (row-major)
-	Frequencies []int               `json:"frequencies"` // contagem de ocorrências por padrão
-	Adjacency   map[string][][2]int `json:"adjacency"`   // direção -> pares compatíveis [idA, idB]
-	TotalFound  int                 `json:"totalFound"`  // total de janelas antes da deduplicação
-}
-
-// Offsets para cada direção de adjacência.
-// "right" significa: padrão B está 1 célula à direita de A.
-var directionOffsets = map[string][2]int{
-	"right": {0, 1},
-	"down":  {1, 0},
-	"left":  {0, -1},
-	"up":    {-1, 0},
-}
-
-// ExtractPatterns varre o grid com janela deslizante PxP,
-// deduplica padrões, conta frequências e computa regras de adjacência.
-//
-// A adjacência usa o critério de sobreposição (overlap):
-// dois padrões são compatíveis numa direção se a faixa de P-1
-// células compartilhada entre eles for idêntica.
-func ExtractPatterns(flat []uint8, rows, cols, P int) (ExtractionResult, error) {
+// BuildModel extrai padrões do grid e constrói o Model otimizado para o solver.
+func BuildModel(flat []uint8, rows, cols, P int) (*Model, error) {
 	if P < 2 || P > rows || P > cols {
-		return ExtractionResult{}, fmt.Errorf("invalid pattern size P=%d for grid %dx%d", P, rows, cols)
+		return nil, fmt.Errorf("invalid pattern size P=%d for grid %dx%d", P, rows, cols)
 	}
+
 	if len(flat) != rows*cols {
-		return ExtractionResult{}, fmt.Errorf("flat array length %d doesn't match %dx%d=%d", len(flat), rows, cols, rows*cols)
+		return nil, fmt.Errorf("flat array length %d doesn't match %dx%d=%d", len(flat), rows, cols, rows*cols)
 	}
 
 	// Reconstrói acesso 2D a partir do flat array (sem cópia, usa slices)
@@ -47,11 +25,12 @@ func ExtractPatterns(flat []uint8, rows, cols, P int) (ExtractionResult, error) 
 	patternIndex := make(map[string]int)
 	var patterns [][]uint8
 	var frequencies []int
-	totalFound := 0
 
 	for r := 0; r <= rows-P; r++ {
 		for c := 0; c <= cols-P; c++ {
+
 			pat := make([]uint8, P*P)
+
 			for pr := range P {
 				for pc := range P {
 					pat[pr*P+pc] = grid[r+pr][c+pc]
@@ -59,6 +38,7 @@ func ExtractPatterns(flat []uint8, rows, cols, P int) (ExtractionResult, error) 
 			}
 
 			key := string(pat)
+
 			if idx, exists := patternIndex[key]; exists {
 				frequencies[idx]++
 			} else {
@@ -66,34 +46,38 @@ func ExtractPatterns(flat []uint8, rows, cols, P int) (ExtractionResult, error) 
 				patterns = append(patterns, pat)
 				frequencies = append(frequencies, 1)
 			}
-			totalFound++
+
 		}
 	}
 
-	// --- 2. Computar regras de adjacência ---
-	adjacency := make(map[string][][2]int)
+	// --- 2. Converter frequências para pesos float64 ---
+	numPatterns := len(patterns)
+	weights := make([]float64, numPatterns)
+	for i, f := range frequencies {
+		weights[i] = float64(f)
+	}
 
-	for dirName, offset := range directionOffsets {
-		dr, dc := offset[0], offset[1]
-		var pairs [][2]int
+	// --- 3. Construir propagator otimizado ---
+	var propagator [4][][]int
+	for dir := 0; dir < 4; dir++ {
+		propagator[dir] = make([][]int, numPatterns)
+		dr, dc := dirOffsets[dir][0], dirOffsets[dir][1]
 
 		for i, patA := range patterns {
 			for j, patB := range patterns {
 				if overlapsMatch(patA, patB, P, dr, dc) {
-					pairs = append(pairs, [2]int{i, j})
+					propagator[dir][i] = append(propagator[dir][i], j)
 				}
 			}
 		}
-
-		adjacency[dirName] = pairs
 	}
 
-	return ExtractionResult{
+	return &Model{
 		PatternSize: P,
+		NumPatterns: numPatterns,
 		Patterns:    patterns,
-		Frequencies: frequencies,
-		Adjacency:   adjacency,
-		TotalFound:  totalFound,
+		Weights:     weights,
+		Propagator:  propagator,
 	}, nil
 }
 
@@ -121,17 +105,38 @@ func overlapsMatch(patA, patB []uint8, P, dr, dc int) bool {
 	return true
 }
 
-// extractToJSON é o ponto de entrada chamado pela bridge JS.
-// Retorna o resultado como string JSON.
+// ExtractPatternsToJSON retorna o resultado da extração como JSON string.
+// Uso exclusivo para debug — o fluxo principal usa BuildModel().
 func ExtractPatternsToJSON(flat []uint8, rows, cols, P int) (string, error) {
-	result, err := ExtractPatterns(flat, rows, cols, P)
+	model, err := BuildModel(flat, rows, cols, P)
 	if err != nil {
 		return "", err
 	}
 
-	data, err := json.Marshal(result)
+	// Converte o propagator [4][][]int para o formato JSON legível
+	dirNames := [4]string{"right", "down", "left", "up"}
+	adjacency := make(map[string][][2]int)
+	for dir := 0; dir < 4; dir++ {
+		var pairs [][2]int
+		for i, compatible := range model.Propagator[dir] {
+			for _, j := range compatible {
+				pairs = append(pairs, [2]int{i, j})
+			}
+		}
+		adjacency[dirNames[dir]] = pairs
+	}
+
+	debug := ExtractionDebug{
+		PatternSize: model.PatternSize,
+		NumPatterns: model.NumPatterns,
+		Patterns:    model.Patterns,
+		Weights:     model.Weights,
+		Adjacency:   adjacency,
+	}
+
+	data, err := json.Marshal(debug)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal result: %w", err)
+		return "", fmt.Errorf("failed to marshal debug result: %w", err)
 	}
 
 	return string(data), nil

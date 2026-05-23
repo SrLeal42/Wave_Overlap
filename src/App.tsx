@@ -3,7 +3,7 @@ import { useWasm } from './wasm/useWasm';
 
 import { DrawingGrid } from './components/DrawingGrid';
 
-import { GRID_COLS, GRID_ROWS, GRID_PATTERN_SIZE } from './constants/Grid';
+import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE } from './constants/Grid';
 import type { Grid } from './types/Grid';
 
 import { gridToFlat } from './utils/Utilities';
@@ -19,24 +19,33 @@ function App() {
     // console.log('[App] Grid updated:', grid);
   };
 
-  const handleGenerate = () => {
 
+  const handleGenerate = () => {
     if (!grid || status !== 'ready') return;
 
     const flat = gridToFlat(grid);
+    const seed = Date.now();
 
-    const json = window.extractPatterns(flat, GRID_ROWS, GRID_COLS, GRID_PATTERN_SIZE);
+    const result = window.generateWFC(
+      flat,
+      GRID_ROWS,
+      GRID_COLS,
+      GRID_PATTERN_SIZE,
+      GRID_OUT_ROWS,
+      GRID_OUT_COLS,
+      seed
+    );
 
-    if (typeof json === 'object') {
-      console.error('[WFC] Extraction error:', json);
+    if (!(result instanceof Uint8Array)) {
+      console.error('[WFC] Error:', result.error);
       return;
     }
 
-    const result = JSON.parse(json);
-
-    console.log('[WFC] Extraction result:', result);
+    console.log('[WFC] Output:', result);
+    console.log(`  ${GRID_OUT_ROWS}×${GRID_OUT_COLS} = ${result.length} pixels`);
 
   };
+
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'Inter, system-ui, sans-serif' }}>
