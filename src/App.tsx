@@ -1,14 +1,41 @@
+import { useState } from 'react';
 import { useWasm } from './wasm/useWasm';
+
 import { DrawingGrid } from './components/DrawingGrid';
+
+import { GRID_COLS, GRID_ROWS, GRID_PATTERN_SIZE } from './constants/Grid';
 import type { Grid } from './types/Grid';
+
+import { gridToFlat } from './utils/Utilities';
+
 import './App.css';
 
 function App() {
   const { status } = useWasm();
+  const [grid, setGrid] = useState<Grid | null>(null);
 
   const handleGridChange = (grid: Grid) => {
-    // Será usado na Fase 3B para enviar o grid ao Go/WASM
-    console.log('[App] Grid updated:', grid);
+    setGrid(grid);
+    // console.log('[App] Grid updated:', grid);
+  };
+
+  const handleGenerate = () => {
+
+    if (!grid || status !== 'ready') return;
+
+    const flat = gridToFlat(grid);
+
+    const json = window.extractPatterns(flat, GRID_ROWS, GRID_COLS, GRID_PATTERN_SIZE);
+
+    if (typeof json === 'object') {
+      console.error('[WFC] Extraction error:', json);
+      return;
+    }
+
+    const result = JSON.parse(json);
+
+    console.log('[WFC] Extraction result:', result);
+
   };
 
   return (
@@ -24,6 +51,15 @@ function App() {
       <DrawingGrid
         onGridChange={handleGridChange}
       />
+
+      <button
+        className="btn btn-generate"
+        onClick={handleGenerate}
+        disabled={!grid || status !== 'ready'}
+      >
+        Generate (WFC)
+      </button>
+
     </div>
   );
 }

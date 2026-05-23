@@ -29,6 +29,7 @@ export function DrawingGrid({
 
     // Libera o "drag painting" quando o mouse é solto em qualquer lugar
     useEffect(() => {
+
         const handleMouseUp = () => {
             if (isPaintingRef.current) {
                 isPaintingRef.current = false;
@@ -36,24 +37,28 @@ export function DrawingGrid({
                 onGridChange?.(gridRef.current);
             }
         };
+
         window.addEventListener('mouseup', handleMouseUp);
+
         return () => window.removeEventListener('mouseup', handleMouseUp);
+
     }, [onGridChange]);
 
 
     const paintCell = useCallback((row: number, col: number) => {
+
         setGrid(prev => {
             const next = prev.map(r => [...r]);
             next[row][col] = selectedColor;
             return next;
         });
+
     }, [selectedColor]);
 
 
     const handleClear = () => {
         setGrid(createEmptyGrid(rows, cols));
     };
-
 
 
 
@@ -95,9 +100,6 @@ export function DrawingGrid({
             <div className="drawing-controls">
                 <button className="btn btn-clear" onClick={handleClear}>
                     Clear
-                </button>
-                <button className="btn btn-generate" disabled>
-                    Generate (WFC)
                 </button>
             </div>
         </div>

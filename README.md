@@ -1,73 +1,39 @@
-# React + TypeScript + Vite
+### Objetivo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Criar uma aplicação web interativa para portfólio onde o usuário desenha um padrão simples numa grade e, a partir dele, o algoritmo **Wave Function Collapse (Overlapping Model)** gera automaticamente uma imagem maior mantendo a coerência visual do desenho original. A geração acontece com **preview em tempo real**, permitindo visualizar o algoritmo colapsando célula por célula.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### Arquitetura
 
-## React Compiler
+A responsabilidade é dividida em duas camadas bem definidas:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**React/TypeScript** cuida exclusivamente da interface — o canvas de desenho, os controles do usuário e a renderização dos snapshots recebidos via SharedArrayBuffer.
 
-## Expanding the ESLint configuration
+**Go/WASM** cuida de toda a computação — extração de padrões e regras a partir do input do usuário, e a execução completa do algoritmo WFC.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+A comunicação entre as duas camadas usa **SharedArrayBuffer**, onde o Go escreve o estado atual da geração diretamente na memória compartilhada e o React lê e renderiza via `requestAnimationFrame`, sem serialização e com performance máxima.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Tecnologias
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Camada              | Tecnologia             | Papel                                  |
+| ------------------- | ---------------------- | -------------------------------------- |
+| UI e apresentação   | React + TypeScript     | Canvas de desenho e renderização       |
+| Lógica e algoritmo  | Go compilado para WASM | Extração de regras e geração WFC       |
+| Comunicação         | SharedArrayBuffer      | Memória compartilhada JS ↔ WASM        |
+| Headers necessários | COOP + COEP            | Habilitar SharedArrayBuffer no browser |
+| Hospedagem          | Vercel ou Cloudflare   | Suporte nativo aos headers necessários |
+
+---
+
+### Fluxo geral
+
 ```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Usuário desenha    →   React captura o grid
+Grid enviado       →   Go extrai padrões e regras
+WFC inicia         →   Go escreve snapshots no SharedArrayBuffer
+React lê memória   →   Renderiza preview em tempo real
+WFC finaliza       →   Imagem completa exibida
 ```

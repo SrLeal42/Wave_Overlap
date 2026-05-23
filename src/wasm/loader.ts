@@ -17,6 +17,7 @@ declare global {
   interface Window {
     Go: new () => GoInstance;
     goPing: (name?: string) => string;
+    extractPatterns: (grid: Uint8Array, rows: number, cols: number, patternSize: number) => string;
   }
 }
 
