@@ -45,20 +45,24 @@ export function OutputGrid({
      * Essa função é reutilizável tanto para render único quanto para rAF loop.
      */
     const render = useCallback(() => {
+
         const canvas = canvasRef.current;
         const ctx = canvas?.getContext('2d');
+
         if (!canvas || !ctx || !source) return;
 
         const lookup = lookupRef.current;
         const imageData = ctx.createImageData(cols, rows);
         const pixels = imageData.data; // Uint8ClampedArray RGBA
 
+        const fallback = lookup[0] ?? new Uint8ClampedArray([10, 10, 19, 255]);
+
         for (let i = 0; i < source.length; i++) {
-            const color = lookup[source[i]];
-            if (!color) continue;
+
+            const color = source ? (lookup[source[i]] ?? fallback) : fallback;
 
             const offset = i * 4;
-            pixels[offset] = color[0]; // R
+            pixels[offset] = color[0];     // R
             pixels[offset + 1] = color[1]; // G
             pixels[offset + 2] = color[2]; // B
             pixels[offset + 3] = color[3]; // A
@@ -88,7 +92,7 @@ export function OutputGrid({
         return () => cancelAnimationFrame(rafIdRef.current);
     }, [live, source, render]);
 
-    if (!source) return null;
+    // if (!source) return null;
 
     return (
         <div className="output-grid-container">

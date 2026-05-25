@@ -2,12 +2,29 @@ package wfc
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"math/rand"
 )
 
 // ErrContradiction é retornado quando uma célula fica sem padrões possíveis.
 var ErrContradiction = errors.New("wfc: contradiction — a cell has no valid patterns")
+
+// run é o loop interno observe→propagate.
+func (s *Solver) run() ([]uint8, error) {
+	for {
+		done, err := s.observe()
+		if err != nil {
+			return nil, err
+		}
+		if done {
+			return s.result(), nil
+		}
+		if err := s.propagate(); err != nil {
+			return nil, err
+		}
+	}
+}
 
 // NewSolver cria um solver para gerar um output de outW×outH.
 func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
@@ -60,25 +77,31 @@ func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
 	return s
 }
 
-// Solve executa o WFC até completar ou encontrar contradição.
+// Solve executa o WFC com até maxRetries tentativas.
 // Retorna o output como flat array (row-major), onde cada valor
 // é um índice de cor da paleta.
-func (s *Solver) Solve() ([]uint8, error) {
-	for {
-		done, err := s.observe()
+func (s *Solver) Solve(maxRetries int) ([]uint8, error) {
 
-		if err != nil {
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+
+		if attempt > 0 {
+			s.reset(s.rng.Int63())
+		}
+
+		output, err := s.run()
+		if err == nil {
+			return output, nil
+		}
+
+		// Só faz retry se for contradição
+		if !errors.Is(err, ErrContradiction) {
 			return nil, err
 		}
 
-		if done {
-			return s.result(), nil
-		}
-
-		if err := s.propagate(); err != nil {
-			return nil, err
-		}
+		fmt.Printf("[WFC] Attempt %d/%d — contradiction, retrying...\n", attempt+1, maxRetries+1)
 	}
+
+	return nil, fmt.Errorf("wfc: failed after %d attempts — no valid configuration found", maxRetries+1)
 }
 
 // --- Observe ---
@@ -217,6 +240,37 @@ func (s *Solver) propagate() error {
 	}
 
 	return nil
+}
+
+// reset reinicializa o solver para uma nova tentativa.
+// Incrementa o seed para gerar um caminho diferente.
+func (s *Solver) reset(newSeed int64) {
+	N := s.model.NumPatterns
+	numCells := s.outW * s.outH
+	s.rng = rand.New(rand.NewSource(newSeed))
+	s.stack = s.stack[:0]
+	sumW := 0.0
+	sumWLogW := 0.0
+
+	for _, w := range s.model.Weights {
+		sumW += w
+		sumWLogW += w * math.Log(w)
+	}
+
+	for i := range numCells {
+
+		for p := range N {
+			s.wave[i][p] = true
+			for d := 0; d < 4; d++ {
+				opp := (d + 2) % 4
+				s.compatible[i][p][d] = len(s.model.Propagator[opp][p])
+			}
+		}
+
+		s.numPoss[i] = N
+		s.sumsOfW[i] = sumW
+		s.sumsOfWLogW[i] = sumWLogW
+	}
 }
 
 // --- Result ---

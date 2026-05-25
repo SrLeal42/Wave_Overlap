@@ -16,11 +16,10 @@
 declare global {
   interface Window {
     Go: new () => GoInstance;
-    goPing: (name?: string) => string;
     extractPatterns: (grid: Uint8Array, rows: number, cols: number, patternSize: number) => string;
     generateWFC: (
       grid: Uint8Array, rows: number, cols: number,
-      patternSize: number, outW: number, outH: number, seed: number
+      patternSize: number, outW: number, outH: number, seed: number, maxRetries: number
     ) => Uint8Array | { error: string };
   }
 }

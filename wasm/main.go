@@ -7,16 +7,6 @@ import (
 	"Wave_Overlap_Wasm/wfc"
 )
 
-// ping é uma função de teste exposta para o JavaScript.
-// Recebe uma string e retorna uma saudação.
-func ping(this js.Value, args []js.Value) any {
-	name := "WASM"
-	if len(args) > 0 {
-		name = args[0].String()
-	}
-	return fmt.Sprintf("Pong from Go/WASM! Hello, %s 🎉", name)
-}
-
 // extractPatternsJS é a bridge JS → Go para extração de padrões.
 //
 // Chamada no JS:
@@ -53,8 +43,8 @@ func extractPatterns(this js.Value, args []js.Value) any {
 //
 //	generateWFC(flatGrid: Uint8Array, rows, cols, patternSize, outW, outH, seed) → Uint8Array | { error: string }
 func generateWFC(this js.Value, args []js.Value) any {
-	if len(args) < 7 {
-		return map[string]any{"error": "expected 7 args: flatGrid, rows, cols, P, outW, outH, seed"}
+	if len(args) < 8 {
+		return map[string]any{"error": "expected 8 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries"}
 	}
 
 	jsArray := args[0]
@@ -64,6 +54,7 @@ func generateWFC(this js.Value, args []js.Value) any {
 	outW := args[4].Int()
 	outH := args[5].Int()
 	seed := int64(args[6].Int())
+	maxRetries := args[7].Int()
 
 	// 1. Copia input do JS
 	length := jsArray.Get("length").Int()
@@ -78,7 +69,7 @@ func generateWFC(this js.Value, args []js.Value) any {
 
 	// 3. Cria solver e executa
 	solver := wfc.NewSolver(model, outW, outH, seed)
-	output, err := solver.Solve()
+	output, err := solver.Solve(maxRetries)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
@@ -94,7 +85,6 @@ func main() {
 	fmt.Println("[Go/WASM] Module loaded successfully")
 
 	// Exporta funções para o escopo global do JS
-	js.Global().Set("goPing", js.FuncOf(ping))
 	js.Global().Set("extractPatterns", js.FuncOf(extractPatterns))
 	js.Global().Set("generateWFC", js.FuncOf(generateWFC))
 

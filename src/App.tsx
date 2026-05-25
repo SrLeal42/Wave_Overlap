@@ -4,7 +4,7 @@ import { useWasm } from './wasm/useWasm';
 import { DrawingGrid } from './components/DrawingGrid';
 import { OutputGrid } from './components/OutputGrid';
 
-import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE } from './constants/Grid';
+import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
 import type { Grid } from './types/Grid';
 
@@ -37,7 +37,8 @@ function App() {
       GRID_PATTERN_SIZE,
       GRID_OUT_ROWS,
       GRID_OUT_COLS,
-      seed
+      seed,
+      WFC_MAX_RETRIES
     );
 
     if (!(result instanceof Uint8Array)) {
