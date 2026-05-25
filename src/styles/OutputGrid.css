@@ -1,0 +1,16 @@
+.output-grid-container {
+    margin-top: 1.5rem;
+}
+
+.output-canvas {
+    /* 
+   * Canvas nativo é cols×rows (ex: 32×32 pixels).
+   * Escalar via CSS sem blur para manter o visual pixelado.
+   */
+    width: 512px;
+    height: 512px;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}

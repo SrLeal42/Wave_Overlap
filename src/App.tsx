@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useWasm } from './wasm/useWasm';
 
 import { DrawingGrid } from './components/DrawingGrid';
+import { OutputGrid } from './components/OutputGrid';
 
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE } from './constants/Grid';
+import { DEFAULT_PALETTE } from './constants/Grid';
 import type { Grid } from './types/Grid';
 
 import { gridToFlat } from './utils/Utilities';
@@ -13,6 +15,8 @@ import './App.css';
 function App() {
   const { status } = useWasm();
   const [grid, setGrid] = useState<Grid | null>(null);
+
+  const [output, setOutput] = useState<Uint8Array | null>(null);
 
   const handleGridChange = (grid: Grid) => {
     setGrid(grid);
@@ -43,6 +47,7 @@ function App() {
 
     console.log('[WFC] Output:', result);
     console.log(`  ${GRID_OUT_ROWS}×${GRID_OUT_COLS} = ${result.length} pixels`);
+    setOutput(result);
 
   };
 
@@ -68,6 +73,13 @@ function App() {
       >
         Generate (WFC)
       </button>
+
+      <OutputGrid
+        source={output}
+        rows={GRID_OUT_ROWS}
+        cols={GRID_OUT_COLS}
+        palette={DEFAULT_PALETTE}
+      />
 
     </div>
   );

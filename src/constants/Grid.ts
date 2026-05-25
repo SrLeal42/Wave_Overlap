@@ -3,8 +3,8 @@ import type { PaletteColor } from "../types/Grid";
 
 export const GRID_ROWS = 16;
 export const GRID_COLS = 16;
-export const GRID_OUT_ROWS = 32;
-export const GRID_OUT_COLS = 32;
+export const GRID_OUT_ROWS = 64;//32;
+export const GRID_OUT_COLS = 64;//32;
 export const GRID_PATTERN_SIZE = 3;
 
 // Paleta padrão — 6 cores suficientes para padrões interessantes com P=3

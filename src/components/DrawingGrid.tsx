@@ -57,7 +57,9 @@ export function DrawingGrid({
 
 
     const handleClear = () => {
-        setGrid(createEmptyGrid(rows, cols));
+        const empty = createEmptyGrid(rows, cols);
+        setGrid(empty);
+        onGridChange?.(empty);
     };
 
 
