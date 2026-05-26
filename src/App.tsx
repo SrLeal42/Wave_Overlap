@@ -13,7 +13,7 @@ import { gridToFlat } from './utils/Utilities';
 import './App.css';
 
 function App() {
-  const { status } = useWasm();
+  const { status, generate } = useWasm();
   const [grid, setGrid] = useState<Grid | null>(null);
 
   const [output, setOutput] = useState<Uint8Array | null>(null);
@@ -24,31 +24,31 @@ function App() {
   };
 
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
+
     if (!grid || status !== 'ready') return;
 
     const flat = gridToFlat(grid);
-    const seed = Date.now();
 
-    const result = window.generateWFC(
-      flat,
-      GRID_ROWS,
-      GRID_COLS,
-      GRID_PATTERN_SIZE,
-      GRID_OUT_ROWS,
-      GRID_OUT_COLS,
-      seed,
-      WFC_MAX_RETRIES
-    );
+    try {
 
-    if (!(result instanceof Uint8Array)) {
-      console.error('[WFC] Error:', result.error);
-      return;
+      const result = await generate({
+        grid: flat,
+        rows: GRID_ROWS,
+        cols: GRID_COLS,
+        patternSize: GRID_PATTERN_SIZE,
+        outW: GRID_OUT_ROWS,
+        outH: GRID_OUT_COLS,
+        seed: Date.now(),
+        maxRetries: WFC_MAX_RETRIES,
+      });
+
+      console.log('[WFC] Output:', result);
+      setOutput(result);
+
+    } catch (err) {
+      console.error('[WFC] Error:', err);
     }
-
-    console.log('[WFC] Output:', result);
-    console.log(`  ${GRID_OUT_ROWS}×${GRID_OUT_COLS} = ${result.length} pixels`);
-    setOutput(result);
 
   };
 
