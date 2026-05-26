@@ -79,3 +79,12 @@ type Solver struct {
 
 	rng *rand.Rand
 }
+
+// StepStatus indica o resultado de um step do solver.
+type StepStatus int
+
+const (
+	StepContinue      StepStatus = iota // Ainda tem células para colapsar
+	StepDone                            // Todas as células colapsadas
+	StepContradiction                   // Contradição — precisa de retry
+)

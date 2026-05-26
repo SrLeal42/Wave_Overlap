@@ -81,12 +81,89 @@ func generateWFC(this js.Value, args []js.Value) any {
 	return jsOutput
 }
 
+// generateWFCLive é a versão com preview em tempo real via SharedArrayBuffer.
+//
+// Chamada no JS:
+//
+//	generateWFCLive(flatGrid, rows, cols, P, outW, outH, seed, maxRetries, sabView) → { status: string } | { error: string }
+//
+// sabView é um Uint8Array backed by SharedArrayBuffer. O Go escreve
+// snapshots diretamente nele a cada step do solver.
+func generateWFCLive(this js.Value, args []js.Value) any {
+
+	if len(args) < 9 {
+		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, sabView"}
+	}
+
+	jsArray := args[0]
+	rows := args[1].Int()
+	cols := args[2].Int()
+	P := args[3].Int()
+	outW := args[4].Int()
+	outH := args[5].Int()
+	seed := int64(args[6].Int())
+	maxRetries := args[7].Int()
+	sabView := args[8] // Uint8Array sobre SharedArrayBuffer
+
+	// 1. Copia input
+	length := jsArray.Get("length").Int()
+	flat := make([]uint8, length)
+	js.CopyBytesToGo(flat, jsArray)
+
+	// 2. Build model
+	model, err := wfc.BuildModel(flat, rows, cols, P)
+	if err != nil {
+		return map[string]any{"error": err.Error()}
+	}
+
+	// 3. Buffer Go para snapshot (reutilizado a cada step)
+	snapshot := make([]uint8, outW*outH)
+
+	// 4. Solve com retries e snapshots
+	solver := wfc.NewSolver(model, outW, outH, seed)
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+
+		if attempt > 0 {
+			fmt.Printf("[WFC] Attempt %d/%d — contradiction, retrying...\n", attempt+1, maxRetries+1)
+			solver.Reset(seed + int64(attempt))
+		}
+
+		for {
+			status := solver.Step()
+
+			switch status {
+
+			case wfc.StepDone:
+				// Snapshot final
+				solver.Snapshot(snapshot)
+				js.CopyBytesToJS(sabView, snapshot)
+				return map[string]any{"status": "done"}
+
+			case wfc.StepContradiction:
+				goto nextAttempt
+
+			case wfc.StepContinue:
+				// Escreve snapshot no SAB
+				solver.Snapshot(snapshot)
+				js.CopyBytesToJS(sabView, snapshot)
+			}
+
+		}
+
+	nextAttempt:
+	}
+
+	return map[string]any{"error": fmt.Sprintf("wfc: failed after %d attempts", maxRetries+1)}
+}
+
 func main() {
 	fmt.Println("[Go/WASM] Module loaded successfully")
 
 	// Exporta funções para o escopo global do JS
 	js.Global().Set("extractPatterns", js.FuncOf(extractPatterns))
 	js.Global().Set("generateWFC", js.FuncOf(generateWFC))
+	js.Global().Set("generateWFCLive", js.FuncOf(generateWFCLive))
 
 	// fmt.Println("[Go/WASM] goExtractPatterns registered")
 

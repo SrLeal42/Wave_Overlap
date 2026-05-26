@@ -12,18 +12,18 @@ var ErrContradiction = errors.New("wfc: contradiction — a cell has no valid pa
 
 // run é o loop interno observe→propagate.
 func (s *Solver) run() ([]uint8, error) {
+
 	for {
-		done, err := s.observe()
-		if err != nil {
-			return nil, err
-		}
-		if done {
+
+		switch s.Step() {
+		case StepDone:
 			return s.result(), nil
+		case StepContradiction:
+			return nil, ErrContradiction
 		}
-		if err := s.propagate(); err != nil {
-			return nil, err
-		}
+		// StepContinue → continua o loop
 	}
+
 }
 
 // NewSolver cria um solver para gerar um output de outW×outH.
@@ -85,7 +85,7 @@ func (s *Solver) Solve(maxRetries int) ([]uint8, error) {
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 
 		if attempt > 0 {
-			s.reset(s.rng.Int63())
+			s.Reset(s.rng.Int63())
 		}
 
 		output, err := s.run()
@@ -102,6 +102,59 @@ func (s *Solver) Solve(maxRetries int) ([]uint8, error) {
 	}
 
 	return nil, fmt.Errorf("wfc: failed after %d attempts — no valid configuration found", maxRetries+1)
+}
+
+func (s *Solver) Step() StepStatus {
+
+	done, err := s.observe()
+	if err != nil {
+		return StepContradiction
+	}
+
+	if done {
+		return StepDone
+	}
+
+	if err := s.propagate(); err != nil {
+		return StepContradiction
+	}
+
+	return StepContinue
+}
+
+// Snapshot escreve o estado atual da wave no buffer fornecido.
+// Para células colapsadas, escreve a cor do padrão escolhido.
+// Para células não-colapsadas, escreve a cor do padrão com maior peso
+// (dá uma visualização coerente do progresso).
+// O buffer deve ter tamanho outW * outH.
+func (s *Solver) Snapshot(buf []uint8) {
+
+	for i, possible := range s.wave {
+		if s.numPoss[i] == 1 {
+
+			// Colapsada — pega o padrão único
+			for p, ok := range possible {
+				if ok {
+					buf[i] = s.model.Patterns[p][0]
+					break
+				}
+			}
+
+		} else if s.numPoss[i] > 1 {
+			// Não colapsada — pega o padrão de maior peso
+			bestWeight := -1.0
+			bestColor := uint8(0)
+			for p, ok := range possible {
+				if ok && s.model.Weights[p] > bestWeight {
+					bestWeight = s.model.Weights[p]
+					bestColor = s.model.Patterns[p][0]
+				}
+			}
+			buf[i] = bestColor
+		}
+		// numPoss == 0 → contradição, deixa o valor anterior
+	}
+
 }
 
 // --- Observe ---
@@ -244,7 +297,7 @@ func (s *Solver) propagate() error {
 
 // reset reinicializa o solver para uma nova tentativa.
 // Incrementa o seed para gerar um caminho diferente.
-func (s *Solver) reset(newSeed int64) {
+func (s *Solver) Reset(newSeed int64) {
 	N := s.model.NumPatterns
 	numCells := s.outW * s.outH
 	s.rng = rand.New(rand.NewSource(newSeed))

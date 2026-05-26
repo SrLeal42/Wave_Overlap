@@ -13,10 +13,12 @@ import { gridToFlat } from './utils/Utilities';
 import './App.css';
 
 function App() {
-  const { status, generate } = useWasm();
+  const { status, generate, generateLive } = useWasm();
   const [grid, setGrid] = useState<Grid | null>(null);
 
   const [output, setOutput] = useState<Uint8Array | null>(null);
+
+  const [isLive, setIsLive] = useState(false);
 
   const handleGridChange = (grid: Grid) => {
     setGrid(grid);
@@ -30,24 +32,36 @@ function App() {
 
     const flat = gridToFlat(grid);
 
+    // 1. Cria o SharedArrayBuffer e a view
+    const sab = new SharedArrayBuffer(GRID_OUT_ROWS * GRID_OUT_COLS);
+    const view = new Uint8Array(sab);
+
+    // 2. Passa a view pro OutputGrid e liga o modo live
+    setOutput(view);
+    setIsLive(true);
+
     try {
-
-      const result = await generate({
-        grid: flat,
-        rows: GRID_ROWS,
-        cols: GRID_COLS,
-        patternSize: GRID_PATTERN_SIZE,
-        outW: GRID_OUT_ROWS,
-        outH: GRID_OUT_COLS,
-        seed: Date.now(),
-        maxRetries: WFC_MAX_RETRIES,
-      });
-
-      console.log('[WFC] Output:', result);
-      setOutput(result);
+      // 3. Envia pro worker — Go escreve no SAB durante o solve
+      await generateLive(
+        {
+          grid: flat,
+          rows: GRID_ROWS,
+          cols: GRID_COLS,
+          patternSize: GRID_PATTERN_SIZE,
+          outW: GRID_OUT_ROWS,
+          outH: GRID_OUT_COLS,
+          seed: Date.now(),
+          maxRetries: WFC_MAX_RETRIES,
+        },
+        sab
+      );
+      console.log('[WFC] Live generation complete');
 
     } catch (err) {
       console.error('[WFC] Error:', err);
+    } finally {
+      // 4. Desliga o rAF loop (mantém o resultado final visível)
+      setIsLive(false);
     }
 
   };
@@ -80,6 +94,7 @@ function App() {
         rows={GRID_OUT_ROWS}
         cols={GRID_OUT_COLS}
         palette={DEFAULT_PALETTE}
+        live={isLive}
       />
 
     </div>

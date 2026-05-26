@@ -17,6 +17,14 @@ declare const generateWFC: (
     seed: number, maxRetries: number
 ) => Uint8Array | { error: string };
 
+
+declare const generateWFCLive: (
+    grid: Uint8Array, rows: number, cols: number,
+    patternSize: number, outW: number, outH: number,
+    seed: number, maxRetries: number, sabView: Uint8Array
+) => { status: string } | { error: string };
+
+
 // --- Inicialização ---
 
 async function loadScript(url: string): Promise<void> {
@@ -61,6 +69,25 @@ self.onmessage = (e: MessageEvent<WorkerInMessage>) => {
             self.postMessage({ type: 'error', error: result.error } satisfies WorkerOutMessage);
         }
     }
+
+    if (msg.type === 'generate-live') {
+        const p = msg.payload;
+        // Cria view sobre o SAB recebido
+        const sabView = new Uint8Array(msg.sab);
+
+        const result = generateWFCLive(
+            p.grid, p.rows, p.cols, p.patternSize,
+            p.outW, p.outH, p.seed, p.maxRetries, sabView
+        );
+
+        if ('error' in result) {
+            self.postMessage({ type: 'error', error: result.error } satisfies WorkerOutMessage);
+        } else {
+            self.postMessage({ type: 'live-done' } satisfies WorkerOutMessage);
+        }
+    }
+
+
 };
 
 init().catch((err) => {

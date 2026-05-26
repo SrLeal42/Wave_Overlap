@@ -5,6 +5,7 @@ interface UseWasmResult {
   status: WasmStatus;
   error: string | null;
   generate: (params: WFCParams) => Promise<Uint8Array>;
+  generateLive: (params: WFCParams, sab: SharedArrayBuffer) => Promise<void>;
 }
 
 export function useWasm(): UseWasmResult {
@@ -39,6 +40,11 @@ export function useWasm(): UseWasmResult {
 
         case 'result':
           pendingRef.current?.resolve(msg.payload);
+          pendingRef.current = null;
+          break;
+
+        case 'live-done':
+          pendingRef.current?.resolve(new Uint8Array(0)); // resolve com array vazio (sinal de done)
           pendingRef.current = null;
           break;
 
@@ -91,5 +97,35 @@ export function useWasm(): UseWasmResult {
 
   }, []);
 
-  return { status, error, generate };
+
+  const generateLive = useCallback((
+    params: WFCParams,
+    sab: SharedArrayBuffer
+  ): Promise<void> => {
+
+    return new Promise((resolve, reject) => {
+
+      const worker = workerRef.current;
+      if (!worker) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
+
+      // Reutiliza o mesmo pending pattern
+      pendingRef.current = {
+        resolve: () => resolve(),
+        reject: (err: Error) => reject(err),
+      } as any;
+
+      worker.postMessage({
+        type: 'generate-live',
+        payload: params,
+        sab,
+      });
+
+    });
+
+  }, []);
+
+  return { status, error, generate, generateLive };
 }

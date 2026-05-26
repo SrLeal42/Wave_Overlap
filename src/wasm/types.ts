@@ -23,7 +23,13 @@ export interface GenerateMessage {
     payload: WFCParams;  // reutiliza WFCParams
 }
 
-export type WorkerInMessage = GenerateMessage;
+export interface GenerateLiveMessage {
+    type: 'generate-live';
+    payload: WFCParams;
+    sab: SharedArrayBuffer;
+}
+export type WorkerInMessage = GenerateMessage | GenerateLiveMessage;
+
 
 // --- Saída (Worker → Main) ---
 
@@ -41,4 +47,9 @@ export interface ReadyMessage {
     type: 'ready';
 }
 
-export type WorkerOutMessage = ResultMessage | ErrorMessage | ReadyMessage;
+export interface LiveDoneMessage {
+    type: 'live-done';
+}
+
+
+export type WorkerOutMessage = ResultMessage | ErrorMessage | ReadyMessage | LiveDoneMessage;
