@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
-import type { Grid, DrawingGridProps } from '../types/Grid';
+import type { Grid, DrawingGridProps, DrawingTool } from '../types/Grid';
 import { DEFAULT_PALETTE, GRID_ROWS, GRID_COLS } from '../constants/Grid';
 import { ColorPalette } from './ColorPalette';
+
+import { brushPaint, bucketFill } from '../utils/Utilities';
 
 import '../styles/DrawingGrid.css';
 
@@ -20,6 +22,7 @@ export function DrawingGrid({
 }: DrawingGridProps) {
     const [grid, setGrid] = useState<Grid>(() => createEmptyGrid(rows, cols));
     const [selectedColor, setSelectedColor] = useState(1);
+    const [activeTool, setActiveTool] = useState<DrawingTool>('brush');
     const [isPainting, setIsPainting] = useState(false);
 
     const isPaintingRef = useRef(false);
@@ -43,17 +46,6 @@ export function DrawingGrid({
         return () => window.removeEventListener('mouseup', handleMouseUp);
 
     }, [onGridChange]);
-
-
-    const paintCell = useCallback((row: number, col: number) => {
-
-        setGrid(prev => {
-            const next = prev.map(r => [...r]);
-            next[row][col] = selectedColor;
-            return next;
-        });
-
-    }, [selectedColor]);
 
 
     const handleClear = () => {
@@ -87,22 +79,57 @@ export function DrawingGrid({
                             style={{ backgroundColor: palette[cell].hex }}
                             onMouseDown={(e) => {
                                 e.preventDefault();
-                                setIsPainting(true);
-                                isPaintingRef.current = true;
-                                paintCell(r, c);
+
+                                if (activeTool === 'brush') {
+
+                                    setIsPainting(true);
+                                    isPaintingRef.current = true;
+                                    setGrid(prev => brushPaint(prev, r, c, selectedColor));
+
+                                } else if (activeTool === 'bucket') {
+
+                                    const newGrid = bucketFill(gridRef.current, r, c, selectedColor);
+                                    setGrid(newGrid);
+                                    onGridChange?.(newGrid);  // bucket é instantâneo, já dispara
+
+                                }
                             }}
                             onMouseEnter={() => {
-                                if (isPainting) paintCell(r, c);
+                                // Só o brush faz drag-painting
+                                if (isPainting && activeTool === 'brush') {
+                                    setGrid(prev => brushPaint(prev, r, c, selectedColor));
+                                }
+
                             }}
+
                         />
                     ))
                 )}
             </div>
 
             <div className="drawing-controls">
+
                 <button className="btn btn-clear" onClick={handleClear}>
                     Clear
                 </button>
+
+                <div className="tool-selector">
+                    <button
+                        className={`btn-tool ${activeTool === 'brush' ? 'active' : ''}`}
+                        onClick={() => setActiveTool('brush')}
+                        title="Pincel"
+                    >
+                        🖌️
+                    </button>
+                    <button
+                        className={`btn-tool ${activeTool === 'bucket' ? 'active' : ''}`}
+                        onClick={() => setActiveTool('bucket')}
+                        title="Balde"
+                    >
+                        🪣
+                    </button>
+                </div>
+
             </div>
         </div>
     );

@@ -4,6 +4,8 @@ export type CellValue = number;
 // Grid é uma matriz 2D: grid[row][col] = índice da cor
 export type Grid = CellValue[][];
 
+export type DrawingTool = 'brush' | 'bucket';
+
 // Uma cor na paleta
 export interface PaletteColor {
     index: number;
@@ -23,4 +25,5 @@ export interface DrawingGridProps {
     palette?: PaletteColor[];
     onGridChange?: (grid: Grid) => void;
 }
+
 
