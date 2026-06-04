@@ -32,17 +32,20 @@ func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
 	N := model.NumPatterns
 
 	s := &Solver{
-		model:       model,
-		outW:        outW,
-		outH:        outH,
-		wave:        make([][]bool, numCells),
-		numPoss:     make([]int, numCells),
-		sumsOfW:     make([]float64, numCells),
-		sumsOfWLogW: make([]float64, numCells),
-		compatible:  make([][][4]int, numCells),
-		stack:       make([]stackEntry, 0, numCells),
-		rng:         rand.New(rand.NewSource(seed)),
+		model:        model,
+		outW:         outW,
+		outH:         outH,
+		wave:         make([][]bool, numCells),
+		numPoss:      make([]int, numCells),
+		sumsOfW:      make([]float64, numCells),
+		sumsOfWLogW:  make([]float64, numCells),
+		compatible:   make([][][4]int, numCells),
+		stack:        make([]stackEntry, 0, numCells),
+		maxBacktrack: 8,
+		rng:          rand.New(rand.NewSource(seed)),
 	}
+
+	s.cpRing = newCheckpointRing(s.maxBacktrack, numCells, N)
 
 	// Somas iniciais (todos os padrões possíveis)
 	sumW := 0.0
@@ -107,7 +110,13 @@ func (s *Solver) Solve(maxRetries int) ([]uint8, error) {
 func (s *Solver) Step() StepStatus {
 
 	done, err := s.observe()
+
 	if err != nil {
+		// Contradição detectada no observe (numPoss == 0)
+		if s.backtrack() {
+			return StepContinue
+		}
+
 		return StepContradiction
 	}
 
@@ -116,6 +125,11 @@ func (s *Solver) Step() StepStatus {
 	}
 
 	if err := s.propagate(); err != nil {
+		// Contradição na propagação — tenta backtrack
+		if s.backtrack() {
+			return StepContinue
+		}
+
 		return StepContradiction
 	}
 
@@ -189,18 +203,22 @@ func (s *Solver) observe() (bool, error) {
 		return true, nil // tudo colapsado
 	}
 
-	s.collapse(minCell)
+	// Separa: escolhe → salva → aplica
+	chosen := s.choosePattern(minCell)
+	// Só salva checkpoint se a decisão é arriscada
+	// (poucas opções restantes → alto risco de contradição)
+	if s.numPoss[minCell] <= 4 {
+		s.saveCheckpoint(minCell, chosen)
+	}
+	s.collapseToPattern(minCell, chosen)
 
 	return false, nil
 }
 
-// collapse escolhe um padrão para a célula baseado nos pesos (frequências)
-// e bane todos os outros.
-func (s *Solver) collapse(cell int) {
-	// Amostragem ponderada
+// choosePattern faz amostragem ponderada e retorna o índice do padrão escolhido.
+func (s *Solver) choosePattern(cell int) int {
 	r := s.rng.Float64() * s.sumsOfW[cell]
 	cumulative := 0.0
-	chosen := -1
 
 	for p, possible := range s.wave[cell] {
 
@@ -210,27 +228,30 @@ func (s *Solver) collapse(cell int) {
 
 		cumulative += s.model.Weights[p]
 		if cumulative >= r {
-			chosen = p
-			break
+			return p
+		}
+
+	}
+
+	// Fallback por imprecisão de float
+	for p := len(s.wave[cell]) - 1; p >= 0; p-- {
+		if s.wave[cell][p] {
+			return p
 		}
 	}
 
-	// Fallback por imprecisão de float: pega o último possível
-	if chosen == -1 {
-		for p := len(s.wave[cell]) - 1; p >= 0; p-- {
-			if s.wave[cell][p] {
-				chosen = p
-				break
-			}
-		}
-	}
+	return -1 // nunca deveria chegar aqui
+}
 
-	// Bane todos exceto o escolhido
+// collapseToPattern bane todos os padrões exceto o escolhido.
+func (s *Solver) collapseToPattern(cell, chosen int) {
+
 	for p := range s.wave[cell] {
 		if p != chosen && s.wave[cell][p] {
 			s.ban(cell, p)
 		}
 	}
+
 }
 
 // --- Propagate ---
@@ -300,8 +321,11 @@ func (s *Solver) propagate() error {
 func (s *Solver) Reset(newSeed int64) {
 	N := s.model.NumPatterns
 	numCells := s.outW * s.outH
+
 	s.rng = rand.New(rand.NewSource(newSeed))
 	s.stack = s.stack[:0]
+	s.cpRing.clear()
+
 	sumW := 0.0
 	sumWLogW := 0.0
 
@@ -324,6 +348,68 @@ func (s *Solver) Reset(newSeed int64) {
 		s.sumsOfW[i] = sumW
 		s.sumsOfWLogW[i] = sumWLogW
 	}
+}
+
+func (s *Solver) saveCheckpoint(cell, chosen int) {
+
+	numCells := s.outW * s.outH
+
+	cp := s.cpRing.push() // retorna slot pré-alocado
+	cp.cell = cell
+	cp.pattern = chosen
+
+	copy(cp.numPoss, s.numPoss)
+	copy(cp.sumsOfW, s.sumsOfW)
+	copy(cp.sumsOfWLogW, s.sumsOfWLogW)
+
+	for i := range numCells {
+		copy(cp.wave[i], s.wave[i])
+		copy(cp.compatible[i], s.compatible[i])
+	}
+
+}
+
+func (s *Solver) restoreCheckpoint(cp *checkpoint) {
+
+	fmt.Printf("[WFC] Checkpoint — Restaurando o checkpoint...\n")
+
+	numCells := s.outW * s.outH
+
+	copy(s.numPoss, cp.numPoss)
+	copy(s.sumsOfW, cp.sumsOfW)
+	copy(s.sumsOfWLogW, cp.sumsOfWLogW)
+
+	for i := range numCells {
+		copy(s.wave[i], cp.wave[i])
+		copy(s.compatible[i], cp.compatible[i])
+	}
+
+	s.stack = s.stack[:0]
+}
+
+func (s *Solver) backtrack() bool {
+
+	for {
+
+		cp := s.cpRing.pop()
+		if cp == nil {
+			return false // ring esgotado
+		}
+
+		s.restoreCheckpoint(cp)
+		s.ban(cp.cell, cp.pattern)
+
+		if s.numPoss[cp.cell] == 0 {
+			continue
+		}
+
+		if err := s.propagate(); err != nil {
+			continue
+		}
+
+		return true
+	}
+
 }
 
 // --- Result ---

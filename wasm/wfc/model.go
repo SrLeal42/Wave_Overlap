@@ -48,6 +48,28 @@ type stackEntry struct {
 	pattern int
 }
 
+// checkpoint armazena o estado completo do solver antes de uma decisão.
+// Os slices internos são pré-alocados e reutilizados.
+type checkpoint struct {
+	cell        int
+	pattern     int
+	wave        [][]bool
+	numPoss     []int
+	sumsOfW     []float64
+	sumsOfWLogW []float64
+	compatible  [][][4]int
+}
+
+// checkpointRing é um stack circular de checkpoints com capacidade fixa.
+// Push adiciona ao topo; se cheio, descarta o mais antigo.
+// Pop remove do topo.
+type checkpointRing struct {
+	slots []checkpoint
+	cap   int
+	base  int // índice lógico do mais antigo
+	top   int // índice lógico de um após o mais recente
+}
+
 // Solver executa o algoritmo Wave Function Collapse (Overlapping Model).
 // Usa boundaries periódicos (wrapping) — o output é tileable.
 type Solver struct {
@@ -76,6 +98,9 @@ type Solver struct {
 
 	// Stack de propagação: (cell, pattern) que foram banidos
 	stack []stackEntry
+
+	cpRing       checkpointRing
+	maxBacktrack int // profundidade máxima do checkpoints
 
 	rng *rand.Rand
 }
