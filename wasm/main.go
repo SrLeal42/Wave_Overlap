@@ -43,8 +43,8 @@ func extractPatterns(this js.Value, args []js.Value) any {
 //
 //	generateWFC(flatGrid: Uint8Array, rows, cols, patternSize, outW, outH, seed) → Uint8Array | { error: string }
 func generateWFC(this js.Value, args []js.Value) any {
-	if len(args) < 8 {
-		return map[string]any{"error": "expected 8 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries"}
+	if len(args) < 9 {
+		return map[string]any{"error": "expected 8 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, symmetry"}
 	}
 
 	jsArray := args[0]
@@ -55,6 +55,7 @@ func generateWFC(this js.Value, args []js.Value) any {
 	outH := args[5].Int()
 	seed := int64(args[6].Int())
 	maxRetries := args[7].Int()
+	symmetry := args[8].Bool()
 
 	// 1. Copia input do JS
 	length := jsArray.Get("length").Int()
@@ -62,7 +63,7 @@ func generateWFC(this js.Value, args []js.Value) any {
 	js.CopyBytesToGo(flat, jsArray)
 
 	// 2. Extrai padrões e constrói model
-	model, err := wfc.BuildModel(flat, rows, cols, P)
+	model, err := wfc.BuildModel(flat, rows, cols, P, symmetry)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}
@@ -91,8 +92,8 @@ func generateWFC(this js.Value, args []js.Value) any {
 // snapshots diretamente nele a cada step do solver.
 func generateWFCLive(this js.Value, args []js.Value) any {
 
-	if len(args) < 9 {
-		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, sabView"}
+	if len(args) < 10 {
+		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, symmetry, sabView"}
 	}
 
 	jsArray := args[0]
@@ -103,7 +104,8 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	outH := args[5].Int()
 	seed := int64(args[6].Int())
 	maxRetries := args[7].Int()
-	sabView := args[8] // Uint8Array sobre SharedArrayBuffer
+	symmetry := args[8].Bool()
+	sabView := args[9] // Uint8Array sobre SharedArrayBuffer
 
 	// 1. Copia input
 	length := jsArray.Get("length").Int()
@@ -111,7 +113,7 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	js.CopyBytesToGo(flat, jsArray)
 
 	// 2. Build model
-	model, err := wfc.BuildModel(flat, rows, cols, P)
+	model, err := wfc.BuildModel(flat, rows, cols, P, symmetry)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
 	}

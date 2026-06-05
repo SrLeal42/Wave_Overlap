@@ -19,6 +19,8 @@ function App() {
   const [output, setOutput] = useState<Uint8Array | null>(null);
 
   const [isLive, setIsLive] = useState(false);
+  const [symmetry, setSymmetry] = useState(true);
+
 
   const handleGridChange = (grid: Grid) => {
     setGrid(grid);
@@ -52,6 +54,7 @@ function App() {
           outH: GRID_OUT_COLS,
           seed: Date.now(),
           maxRetries: WFC_MAX_RETRIES,
+          symmetry
         },
         sab
       );
@@ -80,6 +83,15 @@ function App() {
       <DrawingGrid
         onGridChange={handleGridChange}
       />
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
+        <input
+          type="checkbox"
+          checked={symmetry}
+          onChange={(e) => setSymmetry(e.target.checked)}
+        />
+        Symmetry (D4)
+      </label>
 
       <button
         className="btn btn-generate"

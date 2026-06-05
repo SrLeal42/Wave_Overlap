@@ -14,14 +14,14 @@ declare const Go: new () => {
 declare const generateWFC: (
     grid: Uint8Array, rows: number, cols: number,
     patternSize: number, outW: number, outH: number,
-    seed: number, maxRetries: number
+    seed: number, maxRetries: number, symmetry: boolean,
 ) => Uint8Array | { error: string };
 
 
 declare const generateWFCLive: (
     grid: Uint8Array, rows: number, cols: number,
     patternSize: number, outW: number, outH: number,
-    seed: number, maxRetries: number, sabView: Uint8Array
+    seed: number, maxRetries: number, symmetry: boolean, sabView: Uint8Array
 ) => { status: string } | { error: string };
 
 
@@ -57,7 +57,7 @@ self.onmessage = (e: MessageEvent<WorkerInMessage>) => {
         const p = msg.payload;
         const result = generateWFC(
             p.grid, p.rows, p.cols, p.patternSize,
-            p.outW, p.outH, p.seed, p.maxRetries
+            p.outW, p.outH, p.seed, p.maxRetries, p.symmetry
         );
 
         if (result instanceof Uint8Array) {
@@ -77,7 +77,7 @@ self.onmessage = (e: MessageEvent<WorkerInMessage>) => {
 
         const result = generateWFCLive(
             p.grid, p.rows, p.cols, p.patternSize,
-            p.outW, p.outH, p.seed, p.maxRetries, sabView
+            p.outW, p.outH, p.seed, p.maxRetries, p.symmetry, sabView
         );
 
         if ('error' in result) {

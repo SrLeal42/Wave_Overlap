@@ -9,6 +9,7 @@ export interface WFCParams {
     outH: number;
     seed: number;
     maxRetries: number;
+    symmetry: boolean;
 }
 
 // Status do WASM
