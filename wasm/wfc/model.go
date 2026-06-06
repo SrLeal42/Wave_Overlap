@@ -48,26 +48,22 @@ type stackEntry struct {
 	pattern int
 }
 
-// checkpoint armazena o estado completo do solver antes de uma decisão.
-// Os slices internos são pré-alocados e reutilizados.
-type checkpoint struct {
-	cell        int
-	pattern     int
-	wave        [][]bool
-	numPoss     []int
-	sumsOfW     []float64
-	sumsOfWLogW []float64
-	compatible  [][][4]int
+// banRecord registra um ban individual para poder desfazê-lo durante backtracking.
+// Armazena os valores ANTES da modificação.
+type banRecord struct {
+	cell         int
+	pattern      int
+	prevSumW     float64
+	prevSumWLogW float64
+	prevCompat   [4]int
 }
 
-// checkpointRing é um stack circular de checkpoints com capacidade fixa.
-// Push adiciona ao topo; se cheio, descarta o mais antigo.
-// Pop remove do topo.
-type checkpointRing struct {
-	slots []checkpoint
-	cap   int
-	base  int // índice lógico do mais antigo
-	top   int // índice lógico de um após o mais recente
+// deltaCheckpoint armazena apenas as mudanças (bans) desde a última decisão,
+// em vez de copiar o estado inteiro do solver.
+type deltaCheckpoint struct {
+	observedCell   int
+	chosenPattern  int
+	bans           []banRecord
 }
 
 // Solver executa o algoritmo Wave Function Collapse (Overlapping Model).
@@ -77,8 +73,8 @@ type Solver struct {
 	outW  int // largura do output em células
 	outH  int // altura do output em células
 
-	// wave[cell][pattern] = true se o padrão ainda é possível
-	wave [][]bool
+	// wave[cell] é um Bitset onde o bit p está ligado se o padrão p ainda é possível.
+	wave []Bitset
 
 	// numPoss[cell] = quantidade de padrões possíveis
 	numPoss []int
@@ -99,8 +95,10 @@ type Solver struct {
 	// Stack de propagação: (cell, pattern) que foram banidos
 	stack []stackEntry
 
-	cpRing       checkpointRing
-	maxBacktrack int // profundidade máxima do checkpoints
+	// Delta checkpoints — armazena apenas os bans em vez do estado inteiro.
+	checkpoints  []deltaCheckpoint
+	maxBacktrack int           // profundidade máxima de checkpoints
+	pendingBans  []banRecord   // bans acumulados desde o último checkpoint
 
 	rng *rand.Rand
 }

@@ -3,8 +3,8 @@ import type { PaletteColor } from "../types/Grid";
 
 export const GRID_ROWS = 16;
 export const GRID_COLS = 16;
-export const GRID_OUT_ROWS = 64;
-export const GRID_OUT_COLS = 64;
+export const GRID_OUT_ROWS = 128;//64;
+export const GRID_OUT_COLS = 128;//64;
 export const GRID_PATTERN_SIZE = 3;
 
 export const WFC_MAX_RETRIES = 10;

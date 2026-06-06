@@ -35,17 +35,17 @@ func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
 		model:        model,
 		outW:         outW,
 		outH:         outH,
-		wave:         make([][]bool, numCells),
+		wave:         make([]Bitset, numCells),
 		numPoss:      make([]int, numCells),
 		sumsOfW:      make([]float64, numCells),
 		sumsOfWLogW:  make([]float64, numCells),
 		compatible:   make([][][4]int, numCells),
 		stack:        make([]stackEntry, 0, numCells),
+		checkpoints:  make([]deltaCheckpoint, 0, 8),
 		maxBacktrack: 8,
+		pendingBans:  make([]banRecord, 0, 256),
 		rng:          rand.New(rand.NewSource(seed)),
 	}
-
-	s.cpRing = newCheckpointRing(s.maxBacktrack, numCells, N)
 
 	// Somas iniciais (todos os padrões possíveis)
 	sumW := 0.0
@@ -57,12 +57,11 @@ func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
 
 	// Inicializa cada célula com todos os padrões possíveis
 	for i := range numCells {
-		s.wave[i] = make([]bool, N)
+		s.wave[i] = NewBitset(N)
+		s.wave[i].SetAll()
 		s.compatible[i] = make([][4]int, N)
 
 		for p := range N {
-			s.wave[i][p] = true
-
 			// Contagem de suporte inicial por direção.
 			// compatible[i][p][d] = len(Propagator[opposite(d)][p])
 			// porque com todos os padrões possíveis, o suporte é máximo.
@@ -143,27 +142,25 @@ func (s *Solver) Step() StepStatus {
 // O buffer deve ter tamanho outW * outH.
 func (s *Solver) Snapshot(buf []uint8) {
 
-	for i, possible := range s.wave {
+	for i := range s.wave {
 		if s.numPoss[i] == 1 {
 
 			// Colapsada — pega o padrão único
-			for p, ok := range possible {
-				if ok {
-					buf[i] = s.model.Patterns[p][0]
-					break
-				}
+			p := s.wave[i].FirstSet()
+			if p >= 0 {
+				buf[i] = s.model.Patterns[p][0]
 			}
 
 		} else if s.numPoss[i] > 1 {
 			// Não colapsada — pega o padrão de maior peso
 			bestWeight := -1.0
 			bestColor := uint8(0)
-			for p, ok := range possible {
-				if ok && s.model.Weights[p] > bestWeight {
+			s.wave[i].ForEachSet(func(p int) {
+				if s.model.Weights[p] > bestWeight {
 					bestWeight = s.model.Weights[p]
 					bestColor = s.model.Patterns[p][0]
 				}
-			}
+			})
 			buf[i] = bestColor
 		}
 		// numPoss == 0 → contradição, deixa o valor anterior
@@ -216,28 +213,30 @@ func (s *Solver) observe() (bool, error) {
 }
 
 // choosePattern faz amostragem ponderada e retorna o índice do padrão escolhido.
+// Usa iteração manual sobre o Bitset para permitir early return.
 func (s *Solver) choosePattern(cell int) int {
 	r := s.rng.Float64() * s.sumsOfW[cell]
 	cumulative := 0.0
+	lastSet := -1
 
-	for p, possible := range s.wave[cell] {
-
-		if !possible {
-			continue
+	wi, w := s.wave[cell].IterStart()
+	for {
+		p, nwi, nw, ok := s.wave[cell].Next(wi, w)
+		if !ok {
+			break
 		}
+		wi, w = nwi, nw
+		lastSet = p
 
 		cumulative += s.model.Weights[p]
 		if cumulative >= r {
 			return p
 		}
-
 	}
 
-	// Fallback por imprecisão de float
-	for p := len(s.wave[cell]) - 1; p >= 0; p-- {
-		if s.wave[cell][p] {
-			return p
-		}
+	// Fallback por imprecisão de float — retorna o último bit ligado
+	if lastSet >= 0 {
+		return lastSet
 	}
 
 	return -1 // nunca deveria chegar aqui
@@ -246,10 +245,19 @@ func (s *Solver) choosePattern(cell int) int {
 // collapseToPattern bane todos os padrões exceto o escolhido.
 func (s *Solver) collapseToPattern(cell, chosen int) {
 
-	for p := range s.wave[cell] {
-		if p != chosen && s.wave[cell][p] {
-			s.ban(cell, p)
+	// Coleta os padrões a banir antes de modificar o bitset
+	// (ForEachSet itera sobre snapshot dos words, mas ban() modifica o bitset)
+	var toBan [256]int
+	n := 0
+	s.wave[cell].ForEachSet(func(p int) {
+		if p != chosen {
+			toBan[n] = p
+			n++
 		}
+	})
+
+	for i := range n {
+		s.ban(cell, toBan[i])
 	}
 
 }
@@ -257,8 +265,18 @@ func (s *Solver) collapseToPattern(cell, chosen int) {
 // --- Propagate ---
 
 // ban remove um padrão de uma célula, atualiza entropia e agenda propagação.
+// Grava um banRecord antes de modificar, para possibilitar backtracking por delta.
 func (s *Solver) ban(cell, pattern int) {
-	s.wave[cell][pattern] = false
+	// Grava delta ANTES de modificar o estado
+	s.pendingBans = append(s.pendingBans, banRecord{
+		cell:         cell,
+		pattern:      pattern,
+		prevSumW:     s.sumsOfW[cell],
+		prevSumWLogW: s.sumsOfWLogW[cell],
+		prevCompat:   s.compatible[cell][pattern],
+	})
+
+	s.wave[cell].Clear(pattern)
 	s.numPoss[cell]--
 
 	// Atualiza somas para entropia incremental
@@ -302,7 +320,7 @@ func (s *Solver) propagate() error {
 				comp := &s.compatible[i2][t2]
 				comp[d]--
 
-				if comp[d] == 0 && s.wave[i2][t2] {
+				if comp[d] == 0 && s.wave[i2].Test(t2) {
 					s.ban(i2, t2)
 
 					if s.numPoss[i2] == 0 {
@@ -316,7 +334,7 @@ func (s *Solver) propagate() error {
 	return nil
 }
 
-// reset reinicializa o solver para uma nova tentativa.
+// Reset reinicializa o solver para uma nova tentativa.
 // Incrementa o seed para gerar um caminho diferente.
 func (s *Solver) Reset(newSeed int64) {
 	N := s.model.NumPatterns
@@ -324,7 +342,8 @@ func (s *Solver) Reset(newSeed int64) {
 
 	s.rng = rand.New(rand.NewSource(newSeed))
 	s.stack = s.stack[:0]
-	s.cpRing.clear()
+	s.checkpoints = s.checkpoints[:0]
+	s.pendingBans = s.pendingBans[:0]
 
 	sumW := 0.0
 	sumWLogW := 0.0
@@ -335,9 +354,9 @@ func (s *Solver) Reset(newSeed int64) {
 	}
 
 	for i := range numCells {
+		s.wave[i].SetAll()
 
 		for p := range N {
-			s.wave[i][p] = true
 			for d := 0; d < 4; d++ {
 				opp := (d + 2) % 4
 				s.compatible[i][p][d] = len(s.model.Propagator[opp][p])
@@ -350,40 +369,59 @@ func (s *Solver) Reset(newSeed int64) {
 	}
 }
 
+// saveCheckpoint fecha os pendingBans num deltaCheckpoint e empilha.
 func (s *Solver) saveCheckpoint(cell, chosen int) {
 
-	numCells := s.outW * s.outH
+	cp := deltaCheckpoint{
+		observedCell:  cell,
+		chosenPattern: chosen,
+		bans:          s.pendingBans,
+	}
 
-	cp := s.cpRing.push() // retorna slot pré-alocado
-	cp.cell = cell
-	cp.pattern = chosen
+	// Aloca novo slice para os próximos bans
+	s.pendingBans = make([]banRecord, 0, cap(cp.bans))
 
-	copy(cp.numPoss, s.numPoss)
-	copy(cp.sumsOfW, s.sumsOfW)
-	copy(cp.sumsOfWLogW, s.sumsOfWLogW)
-
-	for i := range numCells {
-		copy(cp.wave[i], s.wave[i])
-		copy(cp.compatible[i], s.compatible[i])
+	// Se excedeu a capacidade, descarta o mais antigo
+	if len(s.checkpoints) >= s.maxBacktrack {
+		// Shift left — descarta checkpoints[0]
+		copy(s.checkpoints, s.checkpoints[1:])
+		s.checkpoints[len(s.checkpoints)-1] = cp
+	} else {
+		s.checkpoints = append(s.checkpoints, cp)
 	}
 
 }
 
-func (s *Solver) restoreCheckpoint(cp *checkpoint) {
+// restoreFromBans desfaz uma lista de bans em ordem reversa.
+func (s *Solver) restoreFromBans(bans []banRecord) {
 
-	fmt.Printf("[WFC] Checkpoint — Restaurando o checkpoint...\n")
+	for i := len(bans) - 1; i >= 0; i-- {
+		b := bans[i]
 
-	numCells := s.outW * s.outH
+		s.wave[b.cell].Set(b.pattern)
+		s.numPoss[b.cell]++
 
-	copy(s.numPoss, cp.numPoss)
-	copy(s.sumsOfW, cp.sumsOfW)
-	copy(s.sumsOfWLogW, cp.sumsOfWLogW)
+		s.sumsOfW[b.cell] = b.prevSumW
+		s.sumsOfWLogW[b.cell] = b.prevSumWLogW
 
-	for i := range numCells {
-		copy(s.wave[i], cp.wave[i])
-		copy(s.compatible[i], cp.compatible[i])
+		s.compatible[b.cell][b.pattern] = b.prevCompat
 	}
 
+}
+
+// restoreCheckpoint desfaz todas as mudanças até o estado salvo no checkpoint.
+func (s *Solver) restoreCheckpoint(cp *deltaCheckpoint) {
+
+	// fmt.Printf("[WFC] Delta Checkpoint — Restaurando (%d pending + %d checkpoint bans)...\n",
+	// 	len(s.pendingBans), len(cp.bans))
+
+	// 1. Desfaz bans pendentes (pós-checkpoint) em ordem reversa
+	s.restoreFromBans(s.pendingBans)
+
+	// 2. Desfaz bans do próprio checkpoint em ordem reversa
+	s.restoreFromBans(cp.bans)
+
+	s.pendingBans = s.pendingBans[:0]
 	s.stack = s.stack[:0]
 }
 
@@ -391,15 +429,18 @@ func (s *Solver) backtrack() bool {
 
 	for {
 
-		cp := s.cpRing.pop()
-		if cp == nil {
-			return false // ring esgotado
+		if len(s.checkpoints) == 0 {
+			return false // stack esgotado
 		}
 
-		s.restoreCheckpoint(cp)
-		s.ban(cp.cell, cp.pattern)
+		// Pop do topo
+		cp := s.checkpoints[len(s.checkpoints)-1]
+		s.checkpoints = s.checkpoints[:len(s.checkpoints)-1]
 
-		if s.numPoss[cp.cell] == 0 {
+		s.restoreCheckpoint(&cp)
+		s.ban(cp.observedCell, cp.chosenPattern)
+
+		if s.numPoss[cp.observedCell] == 0 {
 			continue
 		}
 
@@ -421,12 +462,10 @@ func (s *Solver) backtrack() bool {
 func (s *Solver) result() []uint8 {
 	output := make([]uint8, s.outW*s.outH)
 
-	for i, possible := range s.wave {
-		for p, ok := range possible {
-			if ok {
-				output[i] = s.model.Patterns[p][0]
-				break
-			}
+	for i := range s.wave {
+		p := s.wave[i].FirstSet()
+		if p >= 0 {
+			output[i] = s.model.Patterns[p][0]
 		}
 	}
 
