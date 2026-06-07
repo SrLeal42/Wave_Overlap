@@ -27,7 +27,7 @@ func (s *Solver) run() ([]uint8, error) {
 }
 
 // NewSolver cria um solver para gerar um output de outW×outH.
-func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
+func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver {
 	numCells := outW * outH
 	N := model.NumPatterns
 
@@ -46,6 +46,9 @@ func NewSolver(model *Model, outW, outH int, seed int64) *Solver {
 		pendingBans:  make([]banRecord, 0, 256),
 		rng:          rand.New(rand.NewSource(seed)),
 	}
+
+	s.numColors = numColors
+	s.bytesPerCell = (numColors + 7) / 8
 
 	// Somas iniciais (todos os padrões possíveis)
 	sumW := 0.0
@@ -142,28 +145,21 @@ func (s *Solver) Step() StepStatus {
 // O buffer deve ter tamanho outW * outH.
 func (s *Solver) Snapshot(buf []uint8) {
 
+	bpc := (s.numColors + 7) / 8
+
 	for i := range s.wave {
-		if s.numPoss[i] == 1 {
 
-			// Colapsada — pega o padrão único
-			p := s.wave[i].FirstSet()
-			if p >= 0 {
-				buf[i] = s.model.Patterns[p][0]
-			}
-
-		} else if s.numPoss[i] > 1 {
-			// Não colapsada — pega o padrão de maior peso
-			bestWeight := -1.0
-			bestColor := uint8(0)
-			s.wave[i].ForEachSet(func(p int) {
-				if s.model.Weights[p] > bestWeight {
-					bestWeight = s.model.Weights[p]
-					bestColor = s.model.Patterns[p][0]
-				}
-			})
-			buf[i] = bestColor
+		offset := i * bpc
+		// Limpa os bytes desta célula
+		for b := range bpc {
+			buf[offset+b] = 0
 		}
-		// numPoss == 0 → contradição, deixa o valor anterior
+		// Liga o bit de cada cor possível
+		s.wave[i].ForEachSet(func(p int) {
+			color := int(s.model.Patterns[p][0])
+			buf[offset+color/8] |= 1 << (color % 8)
+		})
+
 	}
 
 }
@@ -247,17 +243,15 @@ func (s *Solver) collapseToPattern(cell, chosen int) {
 
 	// Coleta os padrões a banir antes de modificar o bitset
 	// (ForEachSet itera sobre snapshot dos words, mas ban() modifica o bitset)
-	var toBan [256]int
-	n := 0
+	toBan := make([]int, 0, s.numPoss[cell])
 	s.wave[cell].ForEachSet(func(p int) {
 		if p != chosen {
-			toBan[n] = p
-			n++
+			toBan = append(toBan, p)
 		}
 	})
 
-	for i := range n {
-		s.ban(cell, toBan[i])
+	for _, p := range toBan {
+		s.ban(cell, p)
 	}
 
 }

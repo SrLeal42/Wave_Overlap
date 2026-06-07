@@ -43,8 +43,8 @@ func extractPatterns(this js.Value, args []js.Value) any {
 //
 //	generateWFC(flatGrid: Uint8Array, rows, cols, patternSize, outW, outH, seed) → Uint8Array | { error: string }
 func generateWFC(this js.Value, args []js.Value) any {
-	if len(args) < 9 {
-		return map[string]any{"error": "expected 8 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, symmetry"}
+	if len(args) < 10 {
+		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, numColors, seed, maxRetries, symmetry"}
 	}
 
 	jsArray := args[0]
@@ -53,9 +53,10 @@ func generateWFC(this js.Value, args []js.Value) any {
 	P := args[3].Int()
 	outW := args[4].Int()
 	outH := args[5].Int()
-	seed := int64(args[6].Int())
-	maxRetries := args[7].Int()
-	symmetry := args[8].Bool()
+	numColors := args[6].Int()
+	seed := int64(args[7].Int())
+	maxRetries := args[8].Int()
+	symmetry := args[9].Bool()
 
 	// 1. Copia input do JS
 	length := jsArray.Get("length").Int()
@@ -69,7 +70,7 @@ func generateWFC(this js.Value, args []js.Value) any {
 	}
 
 	// 3. Cria solver e executa
-	solver := wfc.NewSolver(model, outW, outH, seed)
+	solver := wfc.NewSolver(model, outW, outH, numColors, seed)
 	output, err := solver.Solve(maxRetries)
 	if err != nil {
 		return map[string]any{"error": err.Error()}
@@ -92,8 +93,8 @@ func generateWFC(this js.Value, args []js.Value) any {
 // snapshots diretamente nele a cada step do solver.
 func generateWFCLive(this js.Value, args []js.Value) any {
 
-	if len(args) < 10 {
-		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, seed, maxRetries, symmetry, sabView"}
+	if len(args) < 11 {
+		return map[string]any{"error": "expected 9 args: flatGrid, rows, cols, P, outW, outH, numColors, seed, maxRetries, symmetry, sabView"}
 	}
 
 	jsArray := args[0]
@@ -102,10 +103,11 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	P := args[3].Int()
 	outW := args[4].Int()
 	outH := args[5].Int()
-	seed := int64(args[6].Int())
-	maxRetries := args[7].Int()
-	symmetry := args[8].Bool()
-	sabView := args[9] // Uint8Array sobre SharedArrayBuffer
+	numColors := args[6].Int()
+	seed := int64(args[7].Int())
+	maxRetries := args[8].Int()
+	symmetry := args[9].Bool()
+	sabView := args[10] // Uint8Array sobre SharedArrayBuffer
 
 	// 1. Copia input
 	length := jsArray.Get("length").Int()
@@ -119,10 +121,11 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	}
 
 	// 3. Buffer Go para snapshot (reutilizado a cada step)
-	snapshot := make([]uint8, outW*outH)
+	bytesPerCell := (numColors + 7) / 8
+	snapshot := make([]uint8, outW*outH*bytesPerCell)
 
 	// 4. Solve com retries e snapshots
-	solver := wfc.NewSolver(model, outW, outH, seed)
+	solver := wfc.NewSolver(model, outW, outH, numColors, seed)
 
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 

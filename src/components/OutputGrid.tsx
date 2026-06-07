@@ -57,15 +57,46 @@ export function OutputGrid({
 
         const fallback = lookup[0] ?? new Uint8ClampedArray([10, 10, 19, 255]);
 
-        for (let i = 0; i < source.length; i++) {
+        const bytesPerCell = Math.ceil(palette.length / 8);
 
-            const color = source ? (lookup[source[i]] ?? fallback) : fallback;
+        for (let i = 0; i < rows * cols; i++) {
+            const maskOffset = i * bytesPerCell;
+            const pixelOffset = i * 4;
 
-            const offset = i * 4;
-            pixels[offset] = color[0];     // R
-            pixels[offset + 1] = color[1]; // G
-            pixels[offset + 2] = color[2]; // B
-            pixels[offset + 3] = color[3]; // A
+            // Decodifica quais cores estão presentes
+            const colors: Uint8ClampedArray[] = [];
+            for (let c = 0; c < palette.length; c++) {
+                const byteIdx = Math.floor(c / 8);
+                const bitIdx = c % 8;
+                if (source[maskOffset + byteIdx] & (1 << bitIdx)) {
+                    colors.push(lookup[c]);
+                }
+            }
+
+            if (colors.length === 0) {
+                // Contradição — fallback
+                pixels[pixelOffset] = fallback[0];
+                pixels[pixelOffset + 1] = fallback[1];
+                pixels[pixelOffset + 2] = fallback[2];
+                pixels[pixelOffset + 3] = fallback[3];
+            } else if (colors.length === 1) {
+                // Colapsada — cor direta
+                pixels[pixelOffset] = colors[0][0];
+                pixels[pixelOffset + 1] = colors[0][1];
+                pixels[pixelOffset + 2] = colors[0][2];
+                pixels[pixelOffset + 3] = colors[0][3];
+            } else {
+                // Não colapsada — média das cores possíveis
+                let r = 0, g = 0, b = 0;
+                for (const c of colors) {
+                    r += c[0]; g += c[1]; b += c[2];
+                }
+                const n = colors.length;
+                pixels[pixelOffset] = r / n;
+                pixels[pixelOffset + 1] = g / n;
+                pixels[pixelOffset + 2] = b / n;
+                pixels[pixelOffset + 3] = 255;
+            }
         }
 
         ctx.putImageData(imageData, 0, 0);

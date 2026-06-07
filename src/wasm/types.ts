@@ -7,6 +7,7 @@ export interface WFCParams {
     patternSize: number;
     outW: number;
     outH: number;
+    numColors: number;
     seed: number;
     maxRetries: number;
     symmetry: boolean;

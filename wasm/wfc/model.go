@@ -61,9 +61,9 @@ type banRecord struct {
 // deltaCheckpoint armazena apenas as mudanças (bans) desde a última decisão,
 // em vez de copiar o estado inteiro do solver.
 type deltaCheckpoint struct {
-	observedCell   int
-	chosenPattern  int
-	bans           []banRecord
+	observedCell  int
+	chosenPattern int
+	bans          []banRecord
 }
 
 // Solver executa o algoritmo Wave Function Collapse (Overlapping Model).
@@ -77,7 +77,9 @@ type Solver struct {
 	wave []Bitset
 
 	// numPoss[cell] = quantidade de padrões possíveis
-	numPoss []int
+	numPoss      []int
+	numColors    int
+	bytesPerCell int
 
 	// Somas para cálculo incremental de entropia de Shannon:
 	// H = log(sumW) - sumWLogW / sumW
@@ -97,8 +99,8 @@ type Solver struct {
 
 	// Delta checkpoints — armazena apenas os bans em vez do estado inteiro.
 	checkpoints  []deltaCheckpoint
-	maxBacktrack int           // profundidade máxima de checkpoints
-	pendingBans  []banRecord   // bans acumulados desde o último checkpoint
+	maxBacktrack int         // profundidade máxima de checkpoints
+	pendingBans  []banRecord // bans acumulados desde o último checkpoint
 
 	rng *rand.Rand
 }

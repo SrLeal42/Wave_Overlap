@@ -35,7 +35,8 @@ function App() {
     const flat = gridToFlat(grid);
 
     // 1. Cria o SharedArrayBuffer e a view
-    const sab = new SharedArrayBuffer(GRID_OUT_ROWS * GRID_OUT_COLS);
+    const bytesPerCell = Math.ceil(DEFAULT_PALETTE.length / 8);
+    const sab = new SharedArrayBuffer(GRID_OUT_ROWS * GRID_OUT_COLS * bytesPerCell);
     const view = new Uint8Array(sab);
 
     // 2. Passa a view pro OutputGrid e liga o modo live
@@ -52,6 +53,7 @@ function App() {
           patternSize: GRID_PATTERN_SIZE,
           outW: GRID_OUT_ROWS,
           outH: GRID_OUT_COLS,
+          numColors: DEFAULT_PALETTE.length,
           seed: Date.now(),
           maxRetries: WFC_MAX_RETRIES,
           symmetry
