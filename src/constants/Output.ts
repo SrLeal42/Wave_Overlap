@@ -2,14 +2,32 @@ import type { PaletteColor } from "../types/Grid";
 
 export interface OutputGridProps {
     /**
-     * Buffer de dados para renderizar. Pode ser Uint8Array normal (Fase 1)
-     * ou uma view sobre SharedArrayBuffer (Fase 2).
-     * Cada byte = índice de cor na paleta, row-major.
+     * Buffer de dados para renderizar.
+     * Uint8Array sobre SharedArrayBuffer contendo color bitmasks.
+     * Cada célula ocupa ceil(numColors/8) bytes.
      */
     source: Uint8Array | null;
     rows: number;
     cols: number;
     palette: PaletteColor[];
-    /** Quando true, re-renderiza continuamente via rAF (Fase 2). */
+    /** Quando true, re-renderiza continuamente via rAF. */
     live?: boolean;
+    /** Modo de visualização para células não-colapsadas. */
+    renderMode?: RenderMode;
 }
+
+export const RenderMode = {
+    RGBAverage: 0,
+    OKLab: 1,
+    Dithering: 2,
+    Animated: 3
+} as const;
+
+export type RenderMode = typeof RenderMode[keyof typeof RenderMode];
+
+export const RENDER_MODES: { value: RenderMode; label: string }[] = [
+    { value: RenderMode.RGBAverage, label: 'RGB Average' },
+    { value: RenderMode.OKLab, label: 'OKLab Blend' },
+    { value: RenderMode.Dithering, label: 'Dithering' },
+    { value: RenderMode.Animated, label: 'Animated' },
+];

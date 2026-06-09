@@ -7,10 +7,12 @@ import { OutputGrid } from './components/OutputGrid';
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
 import type { Grid } from './types/Grid';
+import { RenderMode, RENDER_MODES } from './constants/Output';
 
 import { gridToFlat } from './utils/Utilities';
 
 import './App.css';
+
 
 function App() {
   const { status, generate, generateLive } = useWasm();
@@ -20,11 +22,11 @@ function App() {
 
   const [isLive, setIsLive] = useState(false);
   const [symmetry, setSymmetry] = useState(true);
+  const [renderMode, setRenderMode] = useState<RenderMode>(1); // OKLab por padrão
 
 
   const handleGridChange = (grid: Grid) => {
     setGrid(grid);
-    // console.log('[App] Grid updated:', grid);
   };
 
 
@@ -86,14 +88,36 @@ function App() {
         onGridChange={handleGridChange}
       />
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
-        <input
-          type="checkbox"
-          checked={symmetry}
-          onChange={(e) => setSymmetry(e.target.checked)}
-        />
-        Symmetry (D4)
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
+          <input
+            type="checkbox"
+            checked={symmetry}
+            onChange={(e) => setSymmetry(e.target.checked)}
+          />
+          Symmetry (D4)
+        </label>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
+          Visual:
+          <select
+            value={renderMode}
+            onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}
+            style={{
+              background: '#1a1a2e',
+              color: '#ccc',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: '4px',
+              padding: '0.25rem 0.5rem',
+              fontSize: '0.85rem',
+            }}
+          >
+            {RENDER_MODES.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <button
         className="btn btn-generate"
@@ -109,6 +133,7 @@ function App() {
         cols={GRID_OUT_COLS}
         palette={DEFAULT_PALETTE}
         live={isLive}
+        renderMode={renderMode}
       />
 
     </div>
