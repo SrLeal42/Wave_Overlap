@@ -6,6 +6,7 @@ interface UseWasmResult {
   error: string | null;
   generate: (params: WFCParams) => Promise<Uint8Array>;
   generateLive: (params: WFCParams, sab: SharedArrayBuffer) => Promise<void>;
+  cancel: () => void;
 }
 
 export function useWasm(): UseWasmResult {
@@ -22,7 +23,9 @@ export function useWasm(): UseWasmResult {
 
   } | null>(null);
 
-  useEffect(() => {
+  const initWorker = useCallback(() => {
+
+    setStatus('loading');
 
     const worker = new Worker(
       new URL('./wfc.worker.ts', import.meta.url),
@@ -30,51 +33,65 @@ export function useWasm(): UseWasmResult {
     );
 
     worker.onmessage = (e: MessageEvent<WorkerOutMessage>) => {
-
       const msg = e.data;
 
       switch (msg.type) {
         case 'ready':
           setStatus('ready');
           break;
-
         case 'result':
           pendingRef.current?.resolve(msg.payload);
           pendingRef.current = null;
           break;
-
         case 'live-done':
-          pendingRef.current?.resolve(new Uint8Array(0)); // resolve com array vazio (sinal de done)
+          pendingRef.current?.resolve(new Uint8Array(0));
           pendingRef.current = null;
           break;
-
         case 'error':
+
           if (pendingRef.current) {
             pendingRef.current.reject(new Error(msg.error));
             pendingRef.current = null;
           } else {
-            // Erro de inicialização
             setError(msg.error);
             setStatus('error');
-            console.log(msg.error)
+            console.log(msg.error);
           }
+
           break;
       }
     };
 
     worker.onerror = (e) => {
-
       console.error('[useWasm] Worker error:', e);
       setError(e.message);
       setStatus('error');
-
     };
 
     workerRef.current = worker;
-
-    return () => worker.terminate();
-
   }, []);
+
+  useEffect(() => {
+    initWorker();
+    return () => workerRef.current?.terminate();
+  }, [initWorker]);
+
+  // Função que encerra o worker abruptamente e instancia um novo
+  const cancel = useCallback(() => {
+    if (workerRef.current) {
+      workerRef.current.terminate();
+      workerRef.current = null;
+
+      // Rejeita a promise pendente para o UI saber que parou
+      if (pendingRef.current) {
+        pendingRef.current.reject(new Error('Cancelado pelo usuário'));
+        pendingRef.current = null;
+      }
+
+      // Reinicia o worker para o próximo uso
+      initWorker();
+    }
+  }, [initWorker]);
 
   const generate = useCallback((params: WFCParams): Promise<Uint8Array> => {
 
@@ -127,5 +144,5 @@ export function useWasm(): UseWasmResult {
 
   }, []);
 
-  return { status, error, generate, generateLive };
+  return { status, error, generate, generateLive, cancel };
 }

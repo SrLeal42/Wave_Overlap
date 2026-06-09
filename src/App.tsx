@@ -15,7 +15,7 @@ import './App.css';
 
 
 function App() {
-  const { status, generate, generateLive } = useWasm();
+  const { status, generate, generateLive, cancel } = useWasm();
   const [grid, setGrid] = useState<Grid | null>(null);
 
   const [output, setOutput] = useState<Uint8Array | null>(null);
@@ -29,6 +29,13 @@ function App() {
     setGrid(grid);
   };
 
+  const handleAction = () => {
+    if (isLive) {
+      cancel();
+    } else {
+      handleGenerate();
+    }
+  };
 
   const handleGenerate = async () => {
 
@@ -120,11 +127,12 @@ function App() {
       </div>
 
       <button
-        className="btn btn-generate"
-        onClick={handleGenerate}
-        disabled={!grid || status !== 'ready'}
+        className={`btn ${isLive ? 'btn-cancel' : 'btn-generate'}`}
+        onClick={handleAction}
+        disabled={!isLive && (!grid || status !== 'ready')}
+        style={{ backgroundColor: isLive ? '#e74c3c' : undefined }}
       >
-        Generate (WFC)
+        {isLive ? '🛑 Cancel Generation' : 'Generate (WFC)'}
       </button>
 
       <OutputGrid
