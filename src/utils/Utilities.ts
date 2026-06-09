@@ -126,12 +126,12 @@ export function createBitmaskTexture(
     gl.texImage2D(
         gl.TEXTURE_2D,
         0,
-        gl.R8UI,            // internal format: unsigned int 8-bit, 1 channel
+        gl.R16UI,            // internal format: unsigned int 8-bit, 1 channel
         width,
         height,
         0,
         gl.RED_INTEGER,      // format
-        gl.UNSIGNED_BYTE,    // type
+        gl.UNSIGNED_SHORT,    // type
         null                 // sem dados iniciais
     );
 

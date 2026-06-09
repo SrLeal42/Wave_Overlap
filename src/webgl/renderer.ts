@@ -136,7 +136,7 @@ export class WFCRenderer {
      * Renderiza um frame.
      * Chamado a cada rAF — faz upload do bitmask SAB como textura e desenha.
      */
-    render(sabView: Uint8Array): void {
+    render(sabView: Uint8Array | Uint16Array): void {
         if (this.destroyed) return;
 
         const gl = this.gl;
@@ -151,7 +151,7 @@ export class WFCRenderer {
             this.gridW,
             this.gridH,
             gl.RED_INTEGER, // format
-            gl.UNSIGNED_BYTE,
+            gl.UNSIGNED_SHORT,
             sabView
         );
 

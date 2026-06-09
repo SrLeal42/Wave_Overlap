@@ -6,7 +6,7 @@ export interface OutputGridProps {
      * Uint8Array sobre SharedArrayBuffer contendo color bitmasks.
      * Cada célula ocupa ceil(numColors/8) bytes.
      */
-    source: Uint8Array | null;
+    source: Uint8Array | Uint16Array | null;
     rows: number;
     cols: number;
     palette: PaletteColor[];

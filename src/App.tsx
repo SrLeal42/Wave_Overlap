@@ -18,7 +18,7 @@ function App() {
   const { status, generate, generateLive, cancel } = useWasm();
   const [grid, setGrid] = useState<Grid | null>(null);
 
-  const [output, setOutput] = useState<Uint8Array | null>(null);
+  const [output, setOutput] = useState<Uint8Array | Uint16Array | null>(null);
 
   const [isLive, setIsLive] = useState(false);
   const [symmetry, setSymmetry] = useState(true);
@@ -46,7 +46,7 @@ function App() {
     // 1. Cria o SharedArrayBuffer e a view
     const bytesPerCell = Math.ceil(DEFAULT_PALETTE.length / 8);
     const sab = new SharedArrayBuffer(GRID_OUT_ROWS * GRID_OUT_COLS * bytesPerCell);
-    const view = new Uint8Array(sab);
+    const view = new Uint16Array(sab);
 
     // 2. Passa a view pro OutputGrid e liga o modo live
     setOutput(view);
