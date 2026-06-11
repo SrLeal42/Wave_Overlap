@@ -42,7 +42,7 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 		compatible:   make([][][4]int, numCells),
 		stack:        make([]stackEntry, 0, numCells),
 		checkpoints:  make([]deltaCheckpoint, 0, 8),
-		maxBacktrack: 8,
+		maxBacktrack: 4,
 		pendingBans:  make([]banRecord, 0, 256),
 		rng:          rand.New(rand.NewSource(seed)),
 	}
