@@ -11,6 +11,7 @@ export function OutputGrid({
     palette,
     live = false,
     renderMode = RenderMode.RGBAverage,
+    bloomEnabled = true,
 }: OutputGridProps) {
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -46,12 +47,18 @@ export function OutputGrid({
         rendererRef.current?.setMode(renderMode as RenderMode);
     }, [renderMode]);
 
+    // Atualiza bloom quando muda
+    useEffect(() => {
+        rendererRef.current?.setBloom(bloomEnabled);
+    }, [bloomEnabled]);
+
+
     // Render único quando source muda (não-live)
     useEffect(() => {
-        if (!live && source && rendererRef.current) {
+        if (source && rendererRef.current) {
             rendererRef.current.render(source);
         }
-    }, [source, live]);
+    }, [source, live, renderMode, bloomEnabled]);
 
     // rAF loop quando live=true
     useEffect(() => {

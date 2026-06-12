@@ -27,6 +27,117 @@ void main() {
 }
 `;
 
+
+
+// ==========================================
+// Bloom Post-Processing Shaders
+// ==========================================
+
+/**
+ * Bright Extract — extrai pixels acima do threshold de luminância.
+ * Usa pesos Rec.709 para cálculo de luminância.
+ */
+export const BLOOM_BRIGHT_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uSceneTex;
+uniform float uThreshold;
+
+void main() {
+    vec3 color = texture(uSceneTex, vUV).rgb;
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+
+    // Soft knee: transição suave ao redor do threshold
+    float contrib = max(0.0, luma - uThreshold);
+    contrib = contrib / (contrib + 0.001); // normaliza para 0..~1
+
+    fragColor = vec4(color * contrib, 1.0);
+}
+`;
+
+/**
+ * Gaussian Blur separável 9-tap.
+ * Usa uniform uDirection para alternar entre passe horizontal e vertical.
+ */
+export const BLOOM_BLUR_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uInputTex;
+uniform vec2 uDirection; // (1/width, 0) para H, (0, 1/height) para V
+
+// 9-tap Gaussian weights (sigma ≈ 2.5)
+const float weights[5] = float[5](
+    0.2270270270,
+    0.1945945946,
+    0.1216216216,
+    0.0540540541,
+    0.0162162162
+);
+
+void main() {
+    vec3 result = texture(uInputTex, vUV).rgb * weights[0];
+
+    for (int i = 1; i < 5; i++) {
+        vec2 offset = uDirection * float(i);
+        result += texture(uInputTex, vUV + offset).rgb * weights[i];
+        result += texture(uInputTex, vUV - offset).rgb * weights[i];
+    }
+
+    fragColor = vec4(result, 1.0);
+}
+`;
+
+/**
+ * Composite — combina a cena original com o bloom (additive).
+ */
+export const BLOOM_COMPOSITE_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uSceneTex;
+uniform sampler2D uBloomTex;
+uniform float uIntensity;
+
+void main() {
+    vec3 scene = texture(uSceneTex, vUV).rgb;
+    vec3 bloom = texture(uBloomTex, vUV).rgb;
+    fragColor = vec4(scene + bloom * uIntensity, 1.0);
+}
+`;
+
+/**
+ * Vertex shader para passes de post-processing (sem inversão de Y).
+ * Usado pelo bloom — os FBOs já estão na orientação correta.
+ */
+export const POST_VERTEX_SHADER = `#version 300 es
+
+precision highp float;
+const vec2 positions[4] = vec2[4](
+    vec2(-1.0, -1.0),
+    vec2( 1.0, -1.0),
+    vec2(-1.0,  1.0),
+    vec2( 1.0,  1.0)
+);
+
+out vec2 vUV;
+void main() {
+    vec2 pos = positions[gl_VertexID];
+    // Sem inversão de Y — FBOs já estão orientados corretamente
+    vUV = vec2(pos.x * 0.5 + 0.5, pos.y * 0.5 + 0.5);
+    gl_Position = vec4(pos, 0.0, 1.0);
+}
+`;
+
+
+
 export const FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 precision highp int;
@@ -144,23 +255,51 @@ vec3 modeOklab(uint mask, int count) {
     return oklabToRgb(sum / float(count));
 }
 
-// Modo 2: Bayer ordered dithering
+float interleavedGradientNoise(vec2 pos) {
+    vec3 magic = vec3(0.06711056, 0.00583715, 52.9829189);
+    return fract(magic.z * fract(dot(pos, magic.xy)));
+}
+// Modo 2 - Dithering
 vec3 modeDither(uint mask, int count, vec2 pixelPos) {
-    ivec2 bp = ivec2(mod(pixelPos, 4.0));
-    int threshold = bayer4[bp.y * 4 + bp.x];
-    // threshold 0-15 → mapeia para index 0..(count-1)
-    int idx = (threshold * count) / 16;
-    idx = min(idx, count - 1);
-    return getNthSetColor(mask, idx);
+    float noise = interleavedGradientNoise(pixelPos);
+    
+    // Posição contínua ao longo das cores
+    float pos = noise * float(count - 1);
+    int idx0 = int(floor(pos));
+    int idx1 = min(idx0 + 1, count - 1);
+    float t = fract(pos);
+    
+    vec3 c0 = getNthSetColor(mask, idx0);
+    vec3 c1 = getNthSetColor(mask, idx1);
+    
+    // Blend em OKLab para transição perceptualmente uniforme
+    vec3 lab0 = rgbToOklab(c0);
+    vec3 lab1 = rgbToOklab(c1);
+
+    return oklabToRgb(mix(lab0, lab1, t));
 }
 
-// Modo 3: Animação — cicla entre as cores possíveis
+// Modo 3: Animação — cicla suavemente entre as cores possíveis
 vec3 modeAnimated(uint mask, int count, vec2 pixelPos) {
+    
     // Onda baseada em posição + tempo
     float phase = uTime * 2.0 + (pixelPos.x + pixelPos.y) * 0.3;
-    int idx = int(mod(phase, float(count)));
-    idx = clamp(idx, 0, count - 1);
-    return getNthSetColor(mask, idx);
+    float continuous = mod(phase, float(count));
+    
+    int idx0 = int(floor(continuous));
+    int idx1 = int(mod(float(idx0 + 1), float(count))); // wrap-around
+    
+    float t = fract(continuous);
+    // Smoothstep para transição ainda mais suave (ease in/out)
+    t = t * t * (3.0 - 2.0 * t);
+    
+    vec3 color0 = getNthSetColor(mask, idx0);
+    vec3 color1 = getNthSetColor(mask, idx1);
+
+    vec3 lab0 = rgbToOklab(color0);
+    vec3 lab1 = rgbToOklab(color1);
+
+    return oklabToRgb(mix(lab0, lab1, t));
 }
 
 // --- Main ---
@@ -205,3 +344,5 @@ void main() {
     fragColor = vec4(color, 1.0);
 }
 `;
+
+

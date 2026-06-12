@@ -14,7 +14,11 @@ export interface OutputGridProps {
     live?: boolean;
     /** Modo de visualização para células não-colapsadas. */
     renderMode?: RenderMode;
+    bloomEnabled?: boolean;
 }
+
+export const BLOOM_THRESHOLD = 0.35;//0.55;
+export const BLOOM_INTENSITY = 0.6;
 
 export const RenderMode = {
     RGBAverage: 0,

@@ -23,6 +23,7 @@ function App() {
   const [isLive, setIsLive] = useState(false);
   const [symmetry, setSymmetry] = useState(true);
   const [renderMode, setRenderMode] = useState<RenderMode>(1); // OKLab por padrão
+  const [bloomEnabled, setBloomEnabled] = useState(true);
 
 
   const handleGridChange = (grid: Grid) => {
@@ -122,8 +123,20 @@ function App() {
             {RENDER_MODES.map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
+
           </select>
         </label>
+
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
+          <input
+            type="checkbox"
+            checked={bloomEnabled}
+            onChange={(e) => setBloomEnabled(e.target.checked)}
+          />
+          Bloom
+        </label>
+
       </div>
 
       <button
@@ -142,6 +155,7 @@ function App() {
         palette={DEFAULT_PALETTE}
         live={isLive}
         renderMode={renderMode}
+        bloomEnabled={bloomEnabled}
       />
 
     </div>
