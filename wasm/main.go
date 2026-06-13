@@ -114,6 +114,8 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	flat := make([]uint8, length)
 	js.CopyBytesToGo(flat, jsArray)
 
+	const snapshotEvery = 16 // ajuste conforme performance
+
 	// 2. Build model
 	model, err := wfc.BuildModel(flat, rows, cols, P, symmetry)
 	if err != nil {
@@ -134,6 +136,8 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 			solver.Reset(seed + int64(attempt))
 		}
 
+		stepCount := 0
+
 		for {
 			status := solver.Step()
 
@@ -149,9 +153,14 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 				goto nextAttempt
 
 			case wfc.StepContinue:
-				// Escreve snapshot no SAB
-				solver.Snapshot(snapshot)
-				js.CopyBytesToJS(sabView, snapshot)
+
+				stepCount++
+				if stepCount%snapshotEvery == 0 {
+					// Escreve snapshot no SAB
+					solver.Snapshot(snapshot)
+					js.CopyBytesToJS(sabView, snapshot)
+				}
+
 			}
 
 		}

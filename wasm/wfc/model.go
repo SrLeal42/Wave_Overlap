@@ -27,8 +27,7 @@ type Model struct {
 	Patterns    [][]uint8 // [patternID][pixel] — flat PxP, row-major (para renderizar output)
 	Weights     []float64 // frequência de cada padrão (para colapso probabilístico)
 
-	// Propagator[dir][patternID] = slice de IDs de padrões compatíveis naquela direção.
-	Propagator [4][][]int
+	PropBits [4][]Bitset // PropBits[dir][patternID] = Bitset de padrões compatíveis
 }
 
 // ExtractionDebug é a saída JSON para inspeção no console do browser.
@@ -55,7 +54,6 @@ type banRecord struct {
 	pattern      int
 	prevSumW     float64
 	prevSumWLogW float64
-	prevCompat   [4]int
 }
 
 // deltaCheckpoint armazena apenas as mudanças (bans) desde a última decisão,
@@ -86,13 +84,7 @@ type Solver struct {
 	sumsOfW     []float64
 	sumsOfWLogW []float64
 
-	// compatible[cell][pattern][dir] = contagem de suporte.
-	// Quantos padrões na célula vizinha na direção oposta a dir
-	// ainda sustentam que pattern seja possível nesta célula.
-	//
-	// Inicializado com len(Propagator[opposite(d)][pattern]) e
-	// decrementado durante propagação. Quando chega a 0, o padrão é banido.
-	compatible [][][4]int
+	wLogW []float64 // pré-computado Weights[p] * Log(Weights[p])
 
 	// Stack de propagação: (cell, pattern) que foram banidos
 	stack []stackEntry

@@ -107,7 +107,7 @@ function App() {
         </label>
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
-          Visual:
+          Construction Visual:
           <select
             value={renderMode}
             onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}
@@ -129,6 +129,7 @@ function App() {
 
 
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
+          Post-Processing:
           <input
             type="checkbox"
             checked={bloomEnabled}

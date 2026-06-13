@@ -104,3 +104,20 @@ func (b *Bitset) IterStart() (int, uint64) {
 	}
 	return 0, b.words[0]
 }
+
+func (b *Bitset) AndAny(other Bitset) bool {
+
+	for i, w := range b.words {
+		if w&other.words[i] != 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (b *Bitset) OrWith(other Bitset) {
+	for i := range b.words {
+		b.words[i] |= other.words[i]
+	}
+}

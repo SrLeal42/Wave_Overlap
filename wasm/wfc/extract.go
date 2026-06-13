@@ -27,7 +27,7 @@ func BuildModel(flat []uint8, rows, cols, P int, symmetry bool) (*Model, error) 
 		NumPatterns: len(patterns),
 		Patterns:    patterns,
 		Weights:     weights,
-		Propagator:  propagator,
+		PropBits:    propagator,
 	}, nil
 }
 
@@ -108,24 +108,26 @@ func registerPattern(pat []uint8, index map[string]int, patterns *[][]uint8, fre
 }
 
 // buildPropagator constrói a tabela de compatibilidade entre padrões.
-func buildPropagator(patterns [][]uint8, P int) [4][][]int {
+func buildPropagator(patterns [][]uint8, P int) [4][]Bitset {
 	numPatterns := len(patterns)
-	var propagator [4][][]int
+	var propBits [4][]Bitset
 
 	for dir := 0; dir < 4; dir++ {
-		propagator[dir] = make([][]int, numPatterns)
+		propBits[dir] = make([]Bitset, numPatterns)
 		dr, dc := dirOffsets[dir][0], dirOffsets[dir][1]
 
 		for i, patA := range patterns {
+			propBits[dir][i] = NewBitset(numPatterns)
 			for j, patB := range patterns {
 				if overlapsMatch(patA, patB, P, dr, dc) {
-					propagator[dir][i] = append(propagator[dir][i], j)
+					propBits[dir][i].Set(j)
 				}
 			}
 		}
+
 	}
 
-	return propagator
+	return propBits
 }
 
 // overlapsMatch verifica se patB pode ser colocado na posição (dr, dc)
@@ -207,10 +209,10 @@ func ExtractPatternsToJSON(flat []uint8, rows, cols, P int) (string, error) {
 	adjacency := make(map[string][][2]int)
 	for dir := 0; dir < 4; dir++ {
 		var pairs [][2]int
-		for i, compatible := range model.Propagator[dir] {
-			for _, j := range compatible {
+		for i, bs := range model.PropBits[dir] {
+			bs.ForEachSet(func(j int) {
 				pairs = append(pairs, [2]int{i, j})
-			}
+			})
 		}
 		adjacency[dirNames[dir]] = pairs
 	}

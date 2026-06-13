@@ -39,7 +39,6 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 		numPoss:      make([]int, numCells),
 		sumsOfW:      make([]float64, numCells),
 		sumsOfWLogW:  make([]float64, numCells),
-		compatible:   make([][][4]int, numCells),
 		stack:        make([]stackEntry, 0, numCells),
 		checkpoints:  make([]deltaCheckpoint, 0, 8),
 		maxBacktrack: 4,
@@ -49,6 +48,12 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 
 	s.numColors = numColors
 	s.bytesPerCell = (numColors + 7) / 8
+
+	// Pré-computa wLogW (evita math.Log repetido no ban)
+	s.wLogW = make([]float64, N)
+	for p, w := range model.Weights {
+		s.wLogW[p] = w * math.Log(w)
+	}
 
 	// Somas iniciais (todos os padrões possíveis)
 	sumW := 0.0
@@ -62,18 +67,6 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 	for i := range numCells {
 		s.wave[i] = NewBitset(N)
 		s.wave[i].SetAll()
-		s.compatible[i] = make([][4]int, N)
-
-		for p := range N {
-			// Contagem de suporte inicial por direção.
-			// compatible[i][p][d] = len(Propagator[opposite(d)][p])
-			// porque com todos os padrões possíveis, o suporte é máximo.
-			for d := 0; d < 4; d++ {
-				opp := (d + 2) % 4
-				s.compatible[i][p][d] = len(model.Propagator[opp][p])
-			}
-		}
-
 		s.numPoss[i] = N
 		s.sumsOfW[i] = sumW
 		s.sumsOfWLogW[i] = sumWLogW
@@ -267,21 +260,14 @@ func (s *Solver) ban(cell, pattern int) {
 		pattern:      pattern,
 		prevSumW:     s.sumsOfW[cell],
 		prevSumWLogW: s.sumsOfWLogW[cell],
-		prevCompat:   s.compatible[cell][pattern],
 	})
 
 	s.wave[cell].Clear(pattern)
 	s.numPoss[cell]--
 
 	// Atualiza somas para entropia incremental
-	w := s.model.Weights[pattern]
-	s.sumsOfW[cell] -= w
-	s.sumsOfWLogW[cell] -= w * math.Log(w)
-
-	// Zera compatibilidade (padrão já removido, não precisa mais rastrear)
-	for d := 0; d < 4; d++ {
-		s.compatible[cell][pattern][d] = 0
-	}
+	s.sumsOfW[cell] -= s.model.Weights[pattern]
+	s.sumsOfWLogW[cell] -= s.wLogW[pattern]
 
 	s.stack = append(s.stack, stackEntry{cell, pattern})
 }
@@ -309,19 +295,27 @@ func (s *Solver) propagate() error {
 			y2 := (y1 + dr + s.outH) % s.outH
 			i2 := y2*s.outW + x2
 
-			// t1 sustentava esses padrões no vizinho — decrementar suporte
-			for _, t2 := range s.model.Propagator[d][t1] {
-				comp := &s.compatible[i2][t2]
-				comp[d]--
+			opp := (d + 2) % 4
 
-				if comp[d] == 0 && s.wave[i2].Test(t2) {
-					s.ban(i2, t2)
-
-					if s.numPoss[i2] == 0 {
-						return ErrContradiction
-					}
+			// Itera sobre padrões que t1 sustentava na direção d
+			// PropBits[d][t1] = padrões compatíveis com t1 na direção d
+			s.model.PropBits[d][t1].ForEachSet(func(t2 int) {
+				// t2 já foi banido? skip
+				if !s.wave[i2].Test(t2) {
+					return
 				}
+				// t2 ainda tem suporte vindo de i1?
+				// PropBits[opp][t2] = padrões que podem estar na dir opp de t2
+				//                   = padrões em i1 que sustentam t2
+				if !s.wave[i1].AndAny(s.model.PropBits[opp][t2]) {
+					s.ban(i2, t2)
+				}
+			})
+
+			if s.numPoss[i2] == 0 {
+				return ErrContradiction
 			}
+
 		}
 	}
 
@@ -349,13 +343,6 @@ func (s *Solver) Reset(newSeed int64) {
 
 	for i := range numCells {
 		s.wave[i].SetAll()
-
-		for p := range N {
-			for d := 0; d < 4; d++ {
-				opp := (d + 2) % 4
-				s.compatible[i][p][d] = len(s.model.Propagator[opp][p])
-			}
-		}
 
 		s.numPoss[i] = N
 		s.sumsOfW[i] = sumW
@@ -398,7 +385,6 @@ func (s *Solver) restoreFromBans(bans []banRecord) {
 		s.sumsOfW[b.cell] = b.prevSumW
 		s.sumsOfWLogW[b.cell] = b.prevSumWLogW
 
-		s.compatible[b.cell][b.pattern] = b.prevCompat
 	}
 
 }
