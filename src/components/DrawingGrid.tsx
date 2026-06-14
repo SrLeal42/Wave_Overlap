@@ -19,6 +19,7 @@ export function DrawingGrid({
     cols = GRID_COLS,
     palette = DEFAULT_PALETTE,
     onGridChange,
+    externalGrid,
 }: DrawingGridProps) {
     const [grid, setGrid] = useState<Grid>(() => createEmptyGrid(rows, cols));
     const [selectedColor, setSelectedColor] = useState(1);
@@ -30,6 +31,15 @@ export function DrawingGrid({
     // Mantém a ref sincronizada com o state
     gridRef.current = grid;
 
+    useEffect(() => {
+
+        if (externalGrid) {
+            setGrid(externalGrid);
+            onGridChange?.(externalGrid, false);
+        }
+
+    }, [externalGrid]);
+
     // Libera o "drag painting" quando o mouse é solto em qualquer lugar
     useEffect(() => {
 
@@ -37,7 +47,7 @@ export function DrawingGrid({
             if (isPaintingRef.current) {
                 isPaintingRef.current = false;
                 setIsPainting(false);
-                onGridChange?.(gridRef.current);
+                onGridChange?.(gridRef.current, true);
             }
         };
 
@@ -51,7 +61,7 @@ export function DrawingGrid({
     const handleClear = () => {
         const empty = createEmptyGrid(rows, cols);
         setGrid(empty);
-        onGridChange?.(empty);
+        onGridChange?.(empty, true);
     };
 
 
@@ -90,7 +100,7 @@ export function DrawingGrid({
 
                                     const newGrid = bucketFill(gridRef.current, r, c, selectedColor);
                                     setGrid(newGrid);
-                                    onGridChange?.(newGrid);  // bucket é instantâneo, já dispara
+                                    onGridChange?.(newGrid, true);  // bucket é instantâneo, já dispara
 
                                 }
                             }}

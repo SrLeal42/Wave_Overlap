@@ -1,4 +1,6 @@
 import type { Grid, CellValue } from '../types/Grid';
+import type { DrawingPreset } from '../types/DrawingPreset';
+import { STORAGE_KEY } from '../constants/DrawingPreset';
 
 /**
  * Achata um Grid 2D para Uint8Array (row-major).
@@ -16,6 +18,61 @@ export function gridToFlat(grid: Grid): Uint8Array {
     }
 
     return flat;
+}
+
+// Helper: cria grid a partir de uma string visual
+// Cada caracter mapeia para um índice de cor
+export function gridFromAscii(art: string, charMap: Record<string, number>): Grid {
+    return art.trim().split('\n').map(row =>
+        [...row.trim()].map(ch => charMap[ch] ?? 0)
+    );
+}
+
+
+export function loadSavedPresets(): DrawingPreset[] {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+}
+
+export function savePreset(preset: DrawingPreset): void {
+    const saved = loadSavedPresets();
+
+    // Sobrescreve se já existir com mesmo id
+    const idx = saved.findIndex(p => p.id === preset.id);
+
+    if (idx >= 0) saved[idx] = preset;
+    else saved.push(preset);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+}
+
+export function deletePreset(id: string): void {
+    const saved = loadSavedPresets().filter(p => p.id !== id);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+}
+
+
+export function printSavedPresetInterface(grid: Grid, label: string): void {
+
+    const usedColors = [...new Set(grid.flat())].sort((a, b) => a - b);
+    const charMap: Record<number, string> = {};
+    usedColors.forEach(c => { charMap[c] = c.toString(36); }); // 0-9, a-z
+    // const art = grid.map(row => row.map(c => charMap[c]).join('')).join('\n');
+    const mapStr = usedColors.map(c => `'${charMap[c]}': ${c}`).join(', ');
+    console.log(
+        `{
+        id: '${label.toLowerCase().replace(/\s+/g, '_')}',
+        label: '${label}',
+        grid: gridFromAscii(\`
+    ${grid.map(row => '        ' + row.map(c => charMap[c]).join('')).join('\n')}
+        \`, { ${mapStr} }),
+    },`
+    );
+
 }
 
 

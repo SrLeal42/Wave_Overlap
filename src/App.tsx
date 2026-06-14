@@ -6,10 +6,13 @@ import { OutputGrid } from './components/OutputGrid';
 
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
-import type { Grid } from './types/Grid';
+import { BUILTIN_PRESETS } from './constants/DrawingPreset';
 import { RenderMode, RENDER_MODES } from './constants/Output';
 
-import { gridToFlat } from './utils/Utilities';
+import type { Grid } from './types/Grid';
+import type { DrawingPreset } from './types/DrawingPreset';
+
+import { gridToFlat, loadSavedPresets, savePreset, deletePreset, /*printSavedPresetInterface*/ } from './utils/Utilities';
 
 import './App.css';
 
@@ -20,14 +23,26 @@ function App() {
 
   const [output, setOutput] = useState<Uint8Array | Uint16Array | null>(null);
 
+  const [presetGrid, setPresetGrid] = useState<Grid | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [savedPresets, setSavedPresets] = useState<DrawingPreset[]>(() => loadSavedPresets());
+  const allPresets = [...BUILTIN_PRESETS, ...savedPresets];
+
   const [isLive, setIsLive] = useState(false);
   const [symmetry, setSymmetry] = useState(true);
   const [renderMode, setRenderMode] = useState<RenderMode>(1); // OKLab por padrão
   const [bloomEnabled, setBloomEnabled] = useState(true);
 
+  const isUserSaved = savedPresets.some(p => p.id === selectedPresetId);
+  const isBuiltIn = BUILTIN_PRESETS.some(p => p.id === selectedPresetId);
 
-  const handleGridChange = (grid: Grid) => {
+  const handleGridChange = (grid: Grid, isUserEdit?: boolean) => {
     setGrid(grid);
+
+    if (isUserEdit) {
+      setSelectedPresetId('');
+    }
+
   };
 
   const handleAction = () => {
@@ -81,6 +96,49 @@ function App() {
 
   };
 
+  const handlePresetChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value;
+
+    if (!id) return;  // opção "Custom" selecionada
+
+    setSelectedPresetId(id);
+
+    const preset = allPresets.find(p => p.id === id);
+    if (preset) {
+      setPresetGrid([...preset.grid.map(r => [...r])]);  // deep copy
+    }
+
+  };
+
+  const handleSave = () => {
+
+    if (!grid) return;
+
+    const id = `saved_${Date.now()}`;
+    const label = prompt('Nome do desenho:');   // ou um input inline se preferir algo mais polido
+
+    if (!label) return;
+
+    const preset: DrawingPreset = { id, label: `💾 ${label}`, grid };
+
+    // printSavedPresetInterface(grid, label);
+
+    savePreset(preset);
+    setSavedPresets(loadSavedPresets());  // re-sincroniza o estado
+
+  };
+
+  const handleDelete = () => {
+
+    if (!selectedPresetId) return;
+
+    deletePreset(selectedPresetId);
+
+    setSavedPresets(loadSavedPresets());
+
+    setSelectedPresetId('');
+  };
+
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -94,9 +152,41 @@ function App() {
 
       <DrawingGrid
         onGridChange={handleGridChange}
+        externalGrid={presetGrid}
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0' }}>
+
+        <select onChange={handlePresetChange} value={selectedPresetId}>
+
+          <option value="">Custom Drawing</option>
+
+          <optgroup label="Built-in">
+            {BUILTIN_PRESETS.map(p => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </optgroup>
+
+          {savedPresets.length > 0 && (
+            <optgroup label="Saved">
+              {savedPresets.map(p => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </optgroup>
+          )}
+
+        </select>
+
+        <button className="btn" onClick={handleSave} disabled={!grid || isBuiltIn}>
+          💾 Save
+        </button>
+
+        {isUserSaved && (
+          <button className="btn btn-clear" onClick={handleDelete}>
+            🗑️ Delete
+          </button>
+        )}
+
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
           <input
             type="checkbox"

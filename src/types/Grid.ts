@@ -23,7 +23,8 @@ export interface DrawingGridProps {
     rows?: number;
     cols?: number;
     palette?: PaletteColor[];
-    onGridChange?: (grid: Grid) => void;
+    onGridChange?: (grid: Grid, isUserEdit?: boolean) => void;
+    externalGrid?: Grid | null;
 }
 
 
