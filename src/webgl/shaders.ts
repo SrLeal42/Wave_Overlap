@@ -136,6 +136,28 @@ void main() {
 }
 `;
 
+export const VIGNETTE_SHADER = `#version 300 es
+
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uInputTex;
+uniform float uRadius;
+uniform float uSoftness;
+
+void main() {
+    vec3 color = texture(uInputTex, vUV).rgb;
+    vec2 center = vUV - 0.5;
+    float dist = length(center);
+    float vignette = smoothstep(uRadius, uRadius - uSoftness, dist);
+    fragColor = vec4(color * vignette, 1.0);
+}
+
+`;
+
+
 
 
 export const FRAGMENT_SHADER = `#version 300 es
@@ -153,6 +175,9 @@ uniform int uNumColors;            // Quantas cores na paleta
 uniform int uMode;                 // 0=RGB avg, 1=OKLab, 2=Dither, 3=Animated
 uniform float uTime;               // Tempo em segundos (para animação)
 uniform vec2 uGridSize;            // (cols, rows)
+
+uniform int uColorEffect[32];   // Efeito per-color (0=None, 1=Pulse, ...)
+uniform vec4 uFxParams[5];  // Params por efeito: [Pulse, Rotate, Wave, Breathe, Glitch]
 
 // --- Bayer matrix 4x4 para dithering ---
 const int bayer4[16] = int[16](
@@ -302,47 +327,106 @@ vec3 modeAnimated(uint mask, int count, vec2 pixelPos) {
     return oklabToRgb(mix(lab0, lab1, t));
 }
 
+
+// === CAMADA 2: Per-Color Effects ===
+const int FX_NONE    = 0;
+const int FX_PULSE   = 1;
+const int FX_ROTATE  = 2;
+const int FX_WAVE    = 3;
+const int FX_BREATHE = 4;
+const int FX_GLITCH  = 5;
+
+vec3 applyColorEffect(vec3 color, int paletteIdx, vec2 cellPos) {
+    int fx = uColorEffect[paletteIdx];
+    
+    if (fx == FX_NONE) return color;
+    
+    // Params do efeito ativo (indexado por fx-1, já que FX_NONE=0 não tem params)
+    vec4 p = uFxParams[fx - 1];
+    
+    if (fx == FX_PULSE) {
+        // p.x=speed, p.y=minBrightness, p.z=range
+        float pulse = p.y + p.z * sin(uTime * p.x);
+        return color * pulse;
+    }
+    
+    if (fx == FX_ROTATE) {
+        // p.x=speed
+        vec3 lab = rgbToOklab(color);
+        float angle = uTime * p.x;
+        float cosA = cos(angle);
+        float sinA = sin(angle);
+        vec2 ab = vec2(lab.y * cosA - lab.z * sinA, lab.y * sinA + lab.z * cosA);
+        return oklabToRgb(vec3(lab.x, ab));
+    }
+    
+    if (fx == FX_WAVE) {
+        // p.x=speed, p.y=freqX, p.z=freqY, p.w=amplitude
+        float wave = sin(cellPos.x * p.y + uTime * p.x) * cos(cellPos.y * p.z + uTime * p.x * 0.67);
+        vec3 lab = rgbToOklab(color);
+        lab.x += wave * p.w;
+        return oklabToRgb(lab);
+    }
+    
+    if (fx == FX_BREATHE) {
+        // p.x=speed, p.y=minChroma, p.z=range
+        vec3 lab = rgbToOklab(color);
+        float breathe = p.y + p.z * sin(uTime * p.x);
+        lab.yz *= breathe;
+        return oklabToRgb(lab);
+    }
+    
+    if (fx == FX_GLITCH) {
+        // p.x=speed (modula time), p.y=threshold
+        float noise = fract(sin(dot(cellPos + uTime * p.x, vec2(12.9898, 78.233))) * 43758.5453);
+        if (noise > p.y) {
+            vec3 lab = rgbToOklab(color);
+            lab.y = -lab.y;
+            return oklabToRgb(lab);
+        }
+        return color;
+    }
+    
+    return color;
+}
+
+
+
+
+
 // --- Main ---
 
 void main() {
-    // Coordenada da célula
     ivec2 cell = ivec2(vUV * uGridSize);
     cell = clamp(cell, ivec2(0), ivec2(uGridSize) - 1);
 
-    // Lê o bitmask desta célula
     uint mask = texelFetch(uMaskTex, cell, 0).r;
-
     int count = popcount(mask);
 
     if (count == 0) {
-        // Contradição ou vazio — fallback escuro
         fragColor = vec4(0.04, 0.04, 0.07, 1.0);
         return;
     }
 
-    if (count == 1) {
-        // Colapsada — cor sólida
-        int idx = firstSetBit(mask);
-        fragColor = vec4(uPalette[idx].rgb, 1.0);
-        return;
-    }
-
-    // Não colapsada — aplica modo visual
     vec3 color;
     vec2 pixelPos = vUV * uGridSize;
 
-    if (uMode == 0) {
-        color = modeAvgRGB(mask, count);
-    } else if (uMode == 1) {
-        color = modeOklab(mask, count);
-    } else if (uMode == 2) {
-        color = modeDither(mask, count, pixelPos);
+    if (count == 1) {
+        // Colapsada — cor sólida + efeito per-color (Camada 2)
+        int idx = firstSetBit(mask);
+        color = uPalette[idx].rgb;
+        color = applyColorEffect(color, idx, pixelPos);
     } else {
-        color = modeAnimated(mask, count, pixelPos);
+        // Não colapsada — Construction Visual (Camada 1)
+        if (uMode == 0)      color = modeAvgRGB(mask, count);
+        else if (uMode == 1) color = modeOklab(mask, count);
+        else if (uMode == 2) color = modeDither(mask, count, pixelPos);
+        else                 color = modeAnimated(mask, count, pixelPos);
     }
 
     fragColor = vec4(color, 1.0);
 }
+
 `;
 
 

@@ -1,10 +1,12 @@
-import {
-    VERTEX_SHADER, FRAGMENT_SHADER, BLOOM_BRIGHT_SHADER,
-    BLOOM_BLUR_SHADER, BLOOM_COMPOSITE_SHADER, POST_VERTEX_SHADER
-} from './shaders';
+import { VERTEX_SHADER, FRAGMENT_SHADER } from './shaders';
+
 import { compileShader, createProgram, createBitmaskTexture, hexToNormalizedRGBA } from '../utils/Utilities';
+
 import type { PaletteColor } from '../types/Grid';
-import { RenderMode, BLOOM_THRESHOLD, BLOOM_INTENSITY } from '../constants/Output';
+import type { PostEffect } from '../types/PostEffect';
+
+import { DEFAULT_FX_PARAMS, RenderMode } from '../constants/Output';
+import type { ColorEffect } from '../constants/Output';
 
 export class WFCRenderer {
 
@@ -26,30 +28,12 @@ export class WFCRenderer {
     private startTime: number;
     private destroyed = false;
 
-
-    // --- Bloom resources ---
-    private bloomEnabled = false;
-    // Programs
-    private brightProgram: WebGLProgram | null = null;
-    private blurProgram: WebGLProgram | null = null;
-    private compositeProgram: WebGLProgram | null = null;
-    // FBOs + Textures
+    // === Camada 3: Post-Processing Pipeline ===
+    private postEffects: PostEffect[] = [];
     private sceneFBO: WebGLFramebuffer | null = null;
     private sceneTex: WebGLTexture | null = null;
-    private fboA: WebGLFramebuffer | null = null;
-    private texA: WebGLTexture | null = null;
-    private fboB: WebGLFramebuffer | null = null;
-    private texB: WebGLTexture | null = null;
-    // Bloom uniform locations
-    private uBright_SceneTex: WebGLUniformLocation | null = null;
-    private uBright_Threshold: WebGLUniformLocation | null = null;
-    private uBlur_InputTex: WebGLUniformLocation | null = null;
-    private uBlur_Direction: WebGLUniformLocation | null = null;
-    private uComp_SceneTex: WebGLUniformLocation | null = null;
-    private uComp_BloomTex: WebGLUniformLocation | null = null;
-    private uComp_Intensity: WebGLUniformLocation | null = null;
-
-
+    private pingPongFBOs: [WebGLFramebuffer, WebGLFramebuffer] | null = null;
+    private pingPongTexs: [WebGLTexture, WebGLTexture] | null = null;
 
 
     constructor(
@@ -115,11 +99,18 @@ export class WFCRenderer {
         // Palette
         this.updatePalette(palette);
 
+        // Camada 2: inicializa color effects como None
+        const noEffects = new Int32Array(32);
+        gl.uniform1iv(gl.getUniformLocation(this.program, 'uColorEffect'), noEffects);
+
+        // Camada 2: inicializa parâmetros default dos efeitos
+        this.setEffectParams(DEFAULT_FX_PARAMS);
+
         // Viewport
         gl.viewport(0, 0, canvas.width, canvas.height);
 
-        // Bloom
-        this.initBloomPipeline(canvas.width, canvas.height);
+        // Camada 3: FBOs para post-processing
+        this.initPostProcessingFBOs(canvas.width, canvas.height);
     }
 
     private getUniform(name: string): WebGLUniformLocation {
@@ -155,14 +146,18 @@ export class WFCRenderer {
     }
 
 
+    // ========================================
+    // Camada 3: Post-Processing Pipeline
+    // ========================================
+
     /**
-    * Cria um FBO com textura RGBA8 para post-processing.
-    */
-    private createBloomFBO(width: number, height: number): { fbo: WebGLFramebuffer; texture: WebGLTexture } {
+     * Cria um FBO com textura RGBA8 para post-processing.
+     */
+    private createFBO(width: number, height: number): { fbo: WebGLFramebuffer; texture: WebGLTexture } {
         const gl = this.gl;
 
         const texture = gl.createTexture();
-        if (!texture) throw new Error('Failed to create bloom texture');
+        if (!texture) throw new Error('Failed to create FBO texture');
 
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texImage2D(
@@ -176,7 +171,7 @@ export class WFCRenderer {
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
         const fbo = gl.createFramebuffer();
-        if (!fbo) throw new Error('Failed to create bloom FBO');
+        if (!fbo) throw new Error('Failed to create FBO');
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(
@@ -186,7 +181,7 @@ export class WFCRenderer {
 
         const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
         if (status !== gl.FRAMEBUFFER_COMPLETE) {
-            throw new Error(`Bloom FBO incomplete: 0x${status.toString(16)}`);
+            throw new Error(`FBO incomplete: 0x${status.toString(16)}`);
         }
 
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -195,107 +190,31 @@ export class WFCRenderer {
         return { fbo, texture };
     }
 
-
-    /**
-    * Compila shaders de bloom, cria FBOs e busca uniform locations.
-    */
-    private initBloomPipeline(width: number, height: number): void {
-        const gl = this.gl;
-
-        // --- Compile programs ---
-        const vs = compileShader(gl, gl.VERTEX_SHADER, POST_VERTEX_SHADER);
-
-        const brightFS = compileShader(gl, gl.FRAGMENT_SHADER, BLOOM_BRIGHT_SHADER);
-        this.brightProgram = createProgram(gl, vs, brightFS);
-        gl.deleteShader(brightFS);
-
-        const blurFS = compileShader(gl, gl.FRAGMENT_SHADER, BLOOM_BLUR_SHADER);
-        this.blurProgram = createProgram(gl, vs, blurFS);
-        gl.deleteShader(blurFS);
-
-        const compFS = compileShader(gl, gl.FRAGMENT_SHADER, BLOOM_COMPOSITE_SHADER);
-        this.compositeProgram = createProgram(gl, vs, compFS);
-        gl.deleteShader(compFS);
-
-        gl.deleteShader(vs); // Shared VS — delete após todos linkarem
-
-        // --- Create FBOs ---
-        const scene = this.createBloomFBO(width, height);
+    private initPostProcessingFBOs(width: number, height: number): void {
+        const scene = this.createFBO(width, height);
         this.sceneFBO = scene.fbo;
         this.sceneTex = scene.texture;
 
-        const a = this.createBloomFBO(width, height);
-        this.fboA = a.fbo;
-        this.texA = a.texture;
-
-        const b = this.createBloomFBO(width, height);
-        this.fboB = b.fbo;
-        this.texB = b.texture;
-
-        // --- Uniform locations ---
-        this.uBright_SceneTex = gl.getUniformLocation(this.brightProgram, 'uSceneTex');
-        this.uBright_Threshold = gl.getUniformLocation(this.brightProgram, 'uThreshold');
-
-        this.uBlur_InputTex = gl.getUniformLocation(this.blurProgram, 'uInputTex');
-        this.uBlur_Direction = gl.getUniformLocation(this.blurProgram, 'uDirection');
-
-        this.uComp_SceneTex = gl.getUniformLocation(this.compositeProgram, 'uSceneTex');
-        this.uComp_BloomTex = gl.getUniformLocation(this.compositeProgram, 'uBloomTex');
-        this.uComp_Intensity = gl.getUniformLocation(this.compositeProgram, 'uIntensity');
-
-        // --- Set static uniforms ---
-        gl.useProgram(this.brightProgram);
-        gl.uniform1i(this.uBright_SceneTex, 0); // texture unit 0
-        gl.uniform1f(this.uBright_Threshold, BLOOM_THRESHOLD);
-
-        gl.useProgram(this.blurProgram);
-        gl.uniform1i(this.uBlur_InputTex, 0);
-
-        gl.useProgram(this.compositeProgram);
-        gl.uniform1i(this.uComp_SceneTex, 0); // unit 0
-        gl.uniform1i(this.uComp_BloomTex, 1); // unit 1
-        gl.uniform1f(this.uComp_Intensity, BLOOM_INTENSITY);
+        const a = this.createFBO(width, height);
+        const b = this.createFBO(width, height);
+        this.pingPongFBOs = [a.fbo, b.fbo];
+        this.pingPongTexs = [a.texture, b.texture];
     }
 
     /**
-    * Executa os passes de bloom: bright extract → blur H → blur V → composite.
-    */
-    private renderBloomPasses(): void {
-        const gl = this.gl;
-
-        // Pass 1: Bright extract (sceneTex → fboA)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboA);
-        gl.useProgram(this.brightProgram!);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-        // Pass 2: Blur horizontal (texA → fboB)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboB);
-        gl.useProgram(this.blurProgram!);
-        gl.uniform2f(this.uBlur_Direction, 1.0 / this.gridW, 0.0);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.texA);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-        // Pass 3: Blur vertical (texB → fboA)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fboA);
-        gl.uniform2f(this.uBlur_Direction, 0.0, 1.0 / this.gridH);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.texB);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-        // Pass 4: Composite (sceneTex + texA → tela)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        gl.useProgram(this.compositeProgram!);
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.sceneTex);
-        gl.activeTexture(gl.TEXTURE1);
-        gl.bindTexture(gl.TEXTURE_2D, this.texA);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+     * Registra um PostEffect no pipeline.
+     * Efeitos são ordenados por `order` (menor executa primeiro).
+     */
+    addPostEffect(effect: PostEffect): void {
+        effect.init(this.gl, this.gridW, this.gridH);
+        this.postEffects.push(effect);
+        this.postEffects.sort((a, b) => a.order - b.order);
     }
 
 
+    // ========================================
+    // Render
+    // ========================================
 
     /**
      * Renderiza um frame.
@@ -319,20 +238,35 @@ export class WFCRenderer {
             gl.UNSIGNED_SHORT,
             sabView
         );
-        // 2. Atualiza tempo (para modo animado)
+        // 2. Atualiza tempo (para modo animado + per-color effects)
         gl.useProgram(this.program);
         const elapsed = performance.now() / 1000 - this.startTime;
         gl.uniform1f(this.uTime, elapsed);
 
-        if (this.bloomEnabled) {
-            // --- Com bloom: render para sceneFBO ---
+        // 3. Determina se há post-effects ativos
+        const activeEffects = this.postEffects.filter(e => e.enabled);
+
+        if (activeEffects.length > 0) {
+            // --- Render para sceneFBO ---
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneFBO);
             gl.bindVertexArray(this.vao);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-            // Executa bloom pipeline
-            this.renderBloomPasses();
+
+            // --- Pipeline de post-processing (ping-pong) ---
+            let currentInput = this.sceneTex!;
+
+            for (let i = 0; i < activeEffects.length; i++) {
+                const isLast = i === activeEffects.length - 1;
+                const outputFBO = isLast ? null : this.pingPongFBOs![i % 2];
+
+                activeEffects[i].render(gl, currentInput, outputFBO, this.vao);
+
+                if (!isLast) {
+                    currentInput = this.pingPongTexs![i % 2];
+                }
+            }
         } else {
-            // --- Sem bloom: direto na tela (zero overhead) ---
+            // --- Sem post-processing: direto na tela (zero overhead) ---
             gl.bindFramebuffer(gl.FRAMEBUFFER, null);
             gl.bindVertexArray(this.vao);
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -350,16 +284,21 @@ export class WFCRenderer {
         gl.deleteTexture(this.maskTexture);
         gl.deleteVertexArray(this.vao);
         gl.deleteProgram(this.program);
-        // Bloom cleanup
-        gl.deleteProgram(this.brightProgram);
-        gl.deleteProgram(this.blurProgram);
-        gl.deleteProgram(this.compositeProgram);
+
+        // Post-processing cleanup
+        for (const effect of this.postEffects) {
+            effect.destroy(gl);
+        }
         gl.deleteFramebuffer(this.sceneFBO);
-        gl.deleteFramebuffer(this.fboA);
-        gl.deleteFramebuffer(this.fboB);
         gl.deleteTexture(this.sceneTex);
-        gl.deleteTexture(this.texA);
-        gl.deleteTexture(this.texB);
+        if (this.pingPongFBOs) {
+            gl.deleteFramebuffer(this.pingPongFBOs[0]);
+            gl.deleteFramebuffer(this.pingPongFBOs[1]);
+        }
+        if (this.pingPongTexs) {
+            gl.deleteTexture(this.pingPongTexs[0]);
+            gl.deleteTexture(this.pingPongTexs[1]);
+        }
     }
 
     /**
@@ -372,9 +311,65 @@ export class WFCRenderer {
         gl.uniform1i(this.uMode, mode);
     }
 
-    setBloom(enabled: boolean): void {
-        this.bloomEnabled = enabled;
+    /**
+     * Seta todos os efeitos per-color de uma vez.
+     */
+    setAllColorEffects(effects: ColorEffect[]): void {
+        const gl = this.gl;
+        gl.useProgram(this.program);
+
+        const data = new Int32Array(32);
+
+        for (let i = 0; i < Math.min(effects.length, 32); i++) {
+            data[i] = effects[i];
+        }
+
+        gl.uniform1iv(gl.getUniformLocation(this.program, 'uColorEffect'), data);
     }
 
+    /**
+     * Toggle de um post-effect por nome.
+     */
+    setPostEffectEnabled(name: string, enabled: boolean): void {
+        const effect = this.postEffects.find(e => e.name === name);
+
+        if (effect) effect.enabled = enabled;
+    }
+
+    /**
+     * Atualiza parâmetros de um post-effect.
+     */
+    setPostEffectParams(name: string, params: Record<string, number>): void {
+        const effect = this.postEffects.find(e => e.name === name);
+        if (effect) effect.setParams(params);
+    }
+
+
+    /**
+    * Seta os parâmetros dos efeitos per-color.
+    * Recebe um mapa de ColorEffect → {speed, param1, param2, param3}.
+    * Converte para o uniform vec4 uFxParams[5].
+    */
+    setEffectParams(params: Record<number, { speed: number; param1: number; param2: number; param3: number }>): void {
+        const gl = this.gl;
+
+        gl.useProgram(this.program);
+
+        // 5 efeitos × 4 floats = 20 floats
+        const data = new Float32Array(5 * 4);
+
+        for (let fx = 1; fx <= 5; fx++) {
+            const p = params[fx];
+            if (p) {
+                const offset = (fx - 1) * 4;
+                data[offset + 0] = p.speed;
+                data[offset + 1] = p.param1;
+                data[offset + 2] = p.param2;
+                data[offset + 3] = p.param3;
+            }
+        }
+
+        gl.uniform4fv(gl.getUniformLocation(this.program, 'uFxParams'), data);
+    }
 
 }

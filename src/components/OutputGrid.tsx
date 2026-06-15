@@ -1,6 +1,10 @@
 import { useRef, useEffect } from 'react';
+
 import { type OutputGridProps, RenderMode } from '../constants/Output';
+
 import { WFCRenderer } from '../webgl/renderer';
+import { BloomEffect } from '../webgl/effects/Bloomeffect';
+import { VignetteEffect } from '../webgl/effects/VignetteEffect';
 
 import '../styles/OutputGrid.css';
 
@@ -11,12 +15,15 @@ export function OutputGrid({
     palette,
     live = false,
     renderMode = RenderMode.RGBAverage,
-    bloomEnabled = true,
+    colorEffects = [],
+    postEffects = [],
 }: OutputGridProps) {
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rendererRef = useRef<WFCRenderer | null>(null);
     const rafIdRef = useRef<number>(0);
+
+    const needsAnimation = live || colorEffects.some(e => e !== 0);
 
     // Inicializa o WFCRenderer quando o canvas monta ou grid size muda
     useEffect(() => {
@@ -25,6 +32,11 @@ export function OutputGrid({
 
         try {
             const renderer = new WFCRenderer(canvas, cols, rows, palette);
+
+            // Registra post-effects
+            renderer.addPostEffect(new BloomEffect());
+            renderer.addPostEffect(new VignetteEffect());
+
             rendererRef.current = renderer;
             console.log('[OutputGrid] WebGL2 renderer initialized');
         } catch (err) {
@@ -47,10 +59,20 @@ export function OutputGrid({
         rendererRef.current?.setMode(renderMode as RenderMode);
     }, [renderMode]);
 
-    // Atualiza bloom quando muda
+    // Sincroniza color effects (Camada 2)
     useEffect(() => {
-        rendererRef.current?.setBloom(bloomEnabled);
-    }, [bloomEnabled]);
+        if (colorEffects.length > 0) {
+            rendererRef.current?.setAllColorEffects(colorEffects);
+        }
+    }, [colorEffects]);
+
+    // Sincroniza post-effects (Camada 3)
+    useEffect(() => {
+        for (const cfg of postEffects) {
+            rendererRef.current?.setPostEffectEnabled(cfg.type, cfg.enabled);
+            rendererRef.current?.setPostEffectParams(cfg.type, cfg.params);
+        }
+    }, [postEffects]);
 
 
     // Render único quando source muda (não-live)
@@ -58,11 +80,12 @@ export function OutputGrid({
         if (source && rendererRef.current) {
             rendererRef.current.render(source);
         }
-    }, [source, live, renderMode, bloomEnabled]);
+    }, [source, live, renderMode, colorEffects, postEffects]);
 
     // rAF loop quando live=true
     useEffect(() => {
-        if (!live || !source) return;
+
+        if (!needsAnimation || !source) return;
 
         const loop = () => {
             rendererRef.current?.render(source);
@@ -72,7 +95,8 @@ export function OutputGrid({
         rafIdRef.current = requestAnimationFrame(loop);
 
         return () => cancelAnimationFrame(rafIdRef.current);
-    }, [live, source]);
+
+    }, [needsAnimation, source]);
 
     return (
         <div className="output-grid-container">

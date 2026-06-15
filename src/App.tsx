@@ -7,7 +7,10 @@ import { OutputGrid } from './components/OutputGrid';
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
 import { BUILTIN_PRESETS } from './constants/DrawingPreset';
-import { RenderMode, RENDER_MODES } from './constants/Output';
+import {
+  RenderMode, RENDER_MODES, ColorEffect, COLOR_EFFECT_PRESETS,
+  DEFAULT_POST_EFFECTS, type PostEffectConfig, type PostEffectType
+} from './constants/Output';
 
 import type { Grid } from './types/Grid';
 import type { DrawingPreset } from './types/DrawingPreset';
@@ -31,7 +34,10 @@ function App() {
   const [isLive, setIsLive] = useState(false);
   const [symmetry, setSymmetry] = useState(true);
   const [renderMode, setRenderMode] = useState<RenderMode>(1); // OKLab por padrão
-  const [bloomEnabled, setBloomEnabled] = useState(true);
+  const [colorEffects, setColorEffects] = useState<ColorEffect[]>(
+    () => Array(DEFAULT_PALETTE.length).fill(ColorEffect.None)
+  );
+  const [postEffects, setPostEffects] = useState<PostEffectConfig[]>(DEFAULT_POST_EFFECTS);
 
   const isUserSaved = savedPresets.some(p => p.id === selectedPresetId);
   const isBuiltIn = BUILTIN_PRESETS.some(p => p.id === selectedPresetId);
@@ -139,6 +145,26 @@ function App() {
     setSelectedPresetId('');
   };
 
+  const toggleColorPreset = (paletteIndex: number, effect: ColorEffect) => {
+
+    setColorEffects(prev => {
+      const next = [...prev];
+      next[paletteIndex] = next[paletteIndex] === effect ? ColorEffect.None : effect;
+
+      return next;
+    });
+
+  };
+
+  const togglePostEffect = (type: PostEffectType) => {
+
+    setPostEffects(prev => prev.map(e =>
+      e.type === type ? { ...e, enabled: !e.enabled } : e
+    ));
+
+  };
+
+
 
   return (
     <div style={{ padding: '2rem', fontFamily: 'Inter, system-ui, sans-serif' }}>
@@ -217,16 +243,45 @@ function App() {
           </select>
         </label>
 
+        {/* Camada 2: Per-Color Effects */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
-          Post-Processing:
-          <input
-            type="checkbox"
-            checked={bloomEnabled}
-            onChange={(e) => setBloomEnabled(e.target.checked)}
-          />
-          Bloom
-        </label>
+          <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Color Effects:</span>
+
+          {COLOR_EFFECT_PRESETS.map(preset => (
+            <label key={`${preset.paletteIndex}-${preset.effect}`}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#ccc' }}>
+              <input
+                type="checkbox"
+                checked={colorEffects[preset.paletteIndex] === preset.effect}
+                onChange={() => toggleColorPreset(preset.paletteIndex, preset.effect)}
+              />
+              {preset.label}
+            </label>
+          ))}
+
+        </div>
+
+        {/* Camada 3: Post-Processing */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+
+          <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Post-Processing:</span>
+
+          {postEffects.map(fx => (
+            <label key={fx.type}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#ccc' }}>
+              <input
+                type="checkbox"
+                checked={fx.enabled}
+                onChange={() => togglePostEffect(fx.type)}
+              />
+              {fx.type.charAt(0).toUpperCase() + fx.type.slice(1)}
+            </label>
+          ))}
+
+        </div>
+
+
 
       </div>
 
@@ -246,7 +301,8 @@ function App() {
         palette={DEFAULT_PALETTE}
         live={isLive}
         renderMode={renderMode}
-        bloomEnabled={bloomEnabled}
+        colorEffects={colorEffects}
+        postEffects={postEffects}
       />
 
     </div>
