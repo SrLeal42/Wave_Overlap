@@ -3,7 +3,7 @@ import { useRef, useEffect } from 'react';
 import { type OutputGridProps, RenderMode } from '../constants/Output';
 
 import { WFCRenderer } from '../webgl/renderer';
-import { BloomEffect } from '../webgl/effects/Bloomeffect';
+import { BloomEffect } from '../webgl/effects/BloomEffect';
 import { VignetteEffect } from '../webgl/effects/VignetteEffect';
 
 import '../styles/OutputGrid.css';
