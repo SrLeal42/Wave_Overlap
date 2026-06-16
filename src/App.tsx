@@ -15,7 +15,7 @@ import {
 import type { Grid } from './types/Grid';
 import type { DrawingPreset } from './types/DrawingPreset';
 
-import { gridToFlat, loadSavedPresets, savePreset, deletePreset, /*printSavedPresetInterface*/ } from './utils/Utilities';
+import { gridToFlat, loadSavedPresets, savePreset, deletePreset, printSavedPresetInterface } from './utils/Utilities';
 
 import './App.css';
 
@@ -127,7 +127,7 @@ function App() {
 
     const preset: DrawingPreset = { id, label: `💾 ${label}`, grid };
 
-    // printSavedPresetInterface(grid, label);
+    printSavedPresetInterface(grid, label);
 
     savePreset(preset);
     setSavedPresets(loadSavedPresets());  // re-sincroniza o estado
