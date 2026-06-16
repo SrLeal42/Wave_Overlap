@@ -89,6 +89,11 @@ type Solver struct {
 	// Stack de propagação: (cell, pattern) que foram banidos
 	stack []stackEntry
 
+	toBanBuf []int // buffer reutilizado para collapse
+
+	dirty    []int  // células que mudaram desde o último observe
+	dirtySet []bool // para evitar duplicatas
+
 	// Delta checkpoints — armazena apenas os bans em vez do estado inteiro.
 	checkpoints  []deltaCheckpoint
 	maxBacktrack int         // profundidade máxima de checkpoints

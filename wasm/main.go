@@ -114,7 +114,7 @@ func generateWFCLive(this js.Value, args []js.Value) any {
 	flat := make([]uint8, length)
 	js.CopyBytesToGo(flat, jsArray)
 
-	const snapshotEvery = 16 // ajuste conforme performance
+	snapshotEvery := 64 // max(16, outW*outH/128) // ajuste conforme performance
 
 	// 2. Build model
 	model, err := wfc.BuildModel(flat, rows, cols, P, symmetry)

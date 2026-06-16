@@ -40,6 +40,7 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 		sumsOfW:      make([]float64, numCells),
 		sumsOfWLogW:  make([]float64, numCells),
 		stack:        make([]stackEntry, 0, numCells),
+		toBanBuf:     make([]int, 0, N),
 		checkpoints:  make([]deltaCheckpoint, 0, 8),
 		maxBacktrack: 4,
 		pendingBans:  make([]banRecord, 0, 256),
@@ -48,6 +49,9 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 
 	s.numColors = numColors
 	s.bytesPerCell = (numColors + 7) / 8
+
+	s.dirty = make([]int, 0, numCells)
+	s.dirtySet = make([]bool, numCells)
 
 	// Pré-computa wLogW (evita math.Log repetido no ban)
 	s.wLogW = make([]float64, N)
@@ -165,17 +169,80 @@ func (s *Solver) Snapshot(buf []uint8) {
 func (s *Solver) observe() (bool, error) {
 	minEntropy := math.MaxFloat64
 	minCell := -1
+	// Se temos dirty cells, busca só entre elas + cells não-colapsadas que mudaram
+	// Senão (primeira iteração ou pós-reset), faz scan completo
+	if len(s.dirty) > 0 {
+
+		allDone := true
+
+		for i, n := range s.numPoss {
+
+			if n == 0 {
+				return false, ErrContradiction
+			}
+
+			if n == 1 {
+				continue
+			}
+			allDone = false
+			// Só calcula entropia se a célula mudou
+			if !s.dirtySet[i] {
+				continue
+			}
+
+			entropy := math.Log(s.sumsOfW[i]) - s.sumsOfWLogW[i]/s.sumsOfW[i]
+			entropy += s.rng.Float64() * 1e-6
+
+			if entropy < minEntropy {
+				minEntropy = entropy
+				minCell = i
+			}
+		}
+
+		// Limpa dirty set
+		for _, c := range s.dirty {
+			s.dirtySet[c] = false
+		}
+
+		s.dirty = s.dirty[:0]
+		if allDone {
+			return true, nil
+		}
+
+		// Se nenhuma dirty cell tinha n>1, faz fallback scan completo
+		if minCell == -1 {
+			return s.observeFull()
+		}
+
+	} else {
+		return s.observeFull()
+	}
+
+	chosen := s.choosePattern(minCell)
+	if s.numPoss[minCell] <= 4 {
+		s.saveCheckpoint(minCell, chosen)
+	}
+
+	s.collapseToPattern(minCell, chosen)
+
+	return false, nil
+}
+
+// observeFull é o scan completo original — usado na primeira iteração e como fallback
+func (s *Solver) observeFull() (bool, error) {
+	minEntropy := math.MaxFloat64
+	minCell := -1
 
 	for i, n := range s.numPoss {
+
 		if n == 0 {
 			return false, ErrContradiction
 		}
 
 		if n == 1 {
-			continue // já colapsada
+			continue
 		}
 
-		// Entropia de Shannon + ruído para desempate aleatório
 		entropy := math.Log(s.sumsOfW[i]) - s.sumsOfWLogW[i]/s.sumsOfW[i]
 		entropy += s.rng.Float64() * 1e-6
 
@@ -186,16 +253,14 @@ func (s *Solver) observe() (bool, error) {
 	}
 
 	if minCell == -1 {
-		return true, nil // tudo colapsado
+		return true, nil
 	}
 
-	// Separa: escolhe → salva → aplica
 	chosen := s.choosePattern(minCell)
-	// Só salva checkpoint se a decisão é arriscada
-	// (poucas opções restantes → alto risco de contradição)
 	if s.numPoss[minCell] <= 4 {
 		s.saveCheckpoint(minCell, chosen)
 	}
+
 	s.collapseToPattern(minCell, chosen)
 
 	return false, nil
@@ -236,14 +301,14 @@ func (s *Solver) collapseToPattern(cell, chosen int) {
 
 	// Coleta os padrões a banir antes de modificar o bitset
 	// (ForEachSet itera sobre snapshot dos words, mas ban() modifica o bitset)
-	toBan := make([]int, 0, s.numPoss[cell])
+	s.toBanBuf = s.toBanBuf[:0]
 	s.wave[cell].ForEachSet(func(p int) {
 		if p != chosen {
-			toBan = append(toBan, p)
+			s.toBanBuf = append(s.toBanBuf, p)
 		}
 	})
 
-	for _, p := range toBan {
+	for _, p := range s.toBanBuf {
 		s.ban(cell, p)
 	}
 
@@ -268,6 +333,11 @@ func (s *Solver) ban(cell, pattern int) {
 	// Atualiza somas para entropia incremental
 	s.sumsOfW[cell] -= s.model.Weights[pattern]
 	s.sumsOfWLogW[cell] -= s.wLogW[pattern]
+
+	if !s.dirtySet[cell] {
+		s.dirty = append(s.dirty, cell)
+		s.dirtySet[cell] = true
+	}
 
 	s.stack = append(s.stack, stackEntry{cell, pattern})
 }
@@ -330,6 +400,7 @@ func (s *Solver) Reset(newSeed int64) {
 
 	s.rng = rand.New(rand.NewSource(newSeed))
 	s.stack = s.stack[:0]
+	s.toBanBuf = s.toBanBuf[:0]
 	s.checkpoints = s.checkpoints[:0]
 	s.pendingBans = s.pendingBans[:0]
 
@@ -347,6 +418,11 @@ func (s *Solver) Reset(newSeed int64) {
 		s.numPoss[i] = N
 		s.sumsOfW[i] = sumW
 		s.sumsOfWLogW[i] = sumWLogW
+	}
+
+	s.dirty = s.dirty[:0]
+	for i := range s.dirtySet {
+		s.dirtySet[i] = false
 	}
 }
 
@@ -384,6 +460,11 @@ func (s *Solver) restoreFromBans(bans []banRecord) {
 
 		s.sumsOfW[b.cell] = b.prevSumW
 		s.sumsOfWLogW[b.cell] = b.prevSumWLogW
+
+		if !s.dirtySet[b.cell] {
+			s.dirty = append(s.dirty, b.cell)
+			s.dirtySet[b.cell] = true
+		}
 
 	}
 
