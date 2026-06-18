@@ -5,7 +5,6 @@
     gap: 1.25rem;
 }
 
-/* ── Paleta de cores ── */
 .color-palette {
     display: flex;
     gap: 0.5rem;
@@ -15,27 +14,26 @@
     width: 36px;
     height: 36px;
     border: 2px solid transparent;
-    border-radius: 6px;
+    border-radius: 0;
     cursor: pointer;
-    transition: transform 0.1s ease, box-shadow 0.15s ease;
+    transition: none;
 }
 
 .palette-swatch:hover {
-    transform: scale(1.15);
+    border-color: var(--text-h);
 }
 
 .palette-swatch.selected {
-    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #7c3aed;
-    transform: scale(1.1);
+    outline: 2px solid var(--text-h);
+    outline-offset: 2px;
 }
 
-/* ── Grid de desenho ── */
 .drawing-grid {
     display: inline-grid;
     gap: 1px;
-    background: #333;
+    background: var(--border);
     padding: 1px;
-    border-radius: 4px;
+    border-radius: 0;
     user-select: none;
 }
 
@@ -43,82 +41,66 @@
     width: 32px;
     height: 32px;
     cursor: crosshair;
-    transition: background-color 0.05s ease;
+    transition: none;
 }
 
 .grid-cell:hover {
-    opacity: 0.8;
-    outline: 2px solid rgba(255, 255, 255, 0.4);
+    outline: 2px solid var(--accent);
     outline-offset: -2px;
+    opacity: 1;
 }
 
-/* ── Controles ── */
 .drawing-controls {
     display: flex;
     gap: 0.75rem;
-}
-
-.btn {
-    padding: 0.6rem 1.4rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.15s ease, opacity 0.15s ease;
+    width: 100%;
 }
 
 .btn-clear {
-    background: #444;
-    color: #eee;
+    flex: 1;
+    background: var(--bg);
+    color: var(--text);
+    border: 2px solid var(--border);
+    border-radius: 0;
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0.6rem;
+    transition: none;
 }
 
 .btn-clear:hover {
-    background: #555;
+    background: var(--border);
+    color: var(--text-h);
 }
 
-.btn-generate {
-    background: #7c3aed;
-    color: #fff;
-}
-
-.btn-generate:hover:not(:disabled) {
-    background: #6d28d9;
-}
-
-.btn-generate:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-/* ── Seletor de ferramentas ── */
 .tool-selector {
     display: flex;
     gap: 0.25rem;
-    background: #333;
-    border-radius: 6px;
-    padding: 3px;
+    background: var(--bg);
+    padding: 0;
 }
 
 .btn-tool {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
-    font-size: 1.1rem;
-    border: none;
-    border-radius: 4px;
+    width: 42px;
+    height: 42px;
+    font-size: 1.2rem;
+    border: 2px solid var(--border);
+    border-radius: 0;
     background: transparent;
+    color: var(--text);
     cursor: pointer;
-    transition: background-color 0.15s ease;
+    transition: none;
 }
 
 .btn-tool:hover {
-    background: #555;
+    border-color: var(--text-h);
 }
 
 .btn-tool.active {
-    background: #7c3aed;
-    box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.5);
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--bg);
 }

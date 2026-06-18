@@ -127,16 +127,16 @@ export function DrawingGrid({
                     <button
                         className={`btn-tool ${activeTool === 'brush' ? 'active' : ''}`}
                         onClick={() => setActiveTool('brush')}
-                        title="Pincel"
+                        title="Brush"
                     >
-                        🖌️
+                        🖌
                     </button>
                     <button
                         className={`btn-tool ${activeTool === 'bucket' ? 'active' : ''}`}
                         onClick={() => setActiveTool('bucket')}
-                        title="Balde"
+                        title="Bucket"
                     >
-                        🪣
+                        ▣
                     </button>
                 </div>
 
