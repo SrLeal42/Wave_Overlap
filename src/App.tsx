@@ -125,7 +125,7 @@ function App() {
 
     if (!label) return;
 
-    const preset: DrawingPreset = { id, label: `💾 ${label}`, grid };
+    const preset: DrawingPreset = { id, label: `🖫 ${label}`, grid };
 
     printSavedPresetInterface(grid, label);
 
@@ -167,146 +167,146 @@ function App() {
 
 
   return (
-    <div style={{ padding: '2rem', fontFamily: 'Inter, system-ui, sans-serif' }}>
-      <h1>🌊 Wave Overlap</h1>
+    <div className="app-container">
 
-      <div style={{ margin: '1rem 0', fontSize: '0.85rem', color: '#999' }}>
-        WASM: {status === 'ready' ? '✅' : status === 'loading' ? '⏳' : '❌'}
-        {' | '}
-        SAB: {typeof SharedArrayBuffer !== 'undefined' ? '✅' : '❌'}
-      </div>
+      {/* LEFT PANEL: Drawing Grid & Basic Tools */}
+      <div className="left-panel">
 
-      <DrawingGrid
-        onGridChange={handleGridChange}
-        externalGrid={presetGrid}
-      />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '0.75rem 0' }}>
+        <DrawingGrid
+          onGridChange={handleGridChange}
+          externalGrid={presetGrid}
+        />
 
-        <select onChange={handlePresetChange} value={selectedPresetId}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
 
-          <option value="">Custom Drawing</option>
-
-          <optgroup label="Built-in">
-            {BUILTIN_PRESETS.map(p => (
-              <option key={p.id} value={p.id}>{p.label}</option>
-            ))}
-          </optgroup>
-
-          {savedPresets.length > 0 && (
-            <optgroup label="Saved">
-              {savedPresets.map(p => (
+          <select className="sharp-select" onChange={handlePresetChange} value={selectedPresetId}>
+            <option value="">Custom Drawing</option>
+            <optgroup label="Built-in">
+              {BUILTIN_PRESETS.map(p => (
                 <option key={p.id} value={p.id}>{p.label}</option>
               ))}
             </optgroup>
-          )}
-
-        </select>
-
-        <button className="btn" onClick={handleSave} disabled={!grid || isBuiltIn}>
-          💾 Save
-        </button>
-
-        {isUserSaved && (
-          <button className="btn btn-clear" onClick={handleDelete}>
-            🗑️ Delete
-          </button>
-        )}
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
-          <input
-            type="checkbox"
-            checked={symmetry}
-            onChange={(e) => setSymmetry(e.target.checked)}
-          />
-          Symmetry (D4)
-        </label>
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', color: '#ccc' }}>
-          Construction Visual:
-          <select
-            value={renderMode}
-            onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}
-            style={{
-              background: '#1a1a2e',
-              color: '#ccc',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: '4px',
-              padding: '0.25rem 0.5rem',
-              fontSize: '0.85rem',
-            }}
-          >
-            {RENDER_MODES.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-
+            {savedPresets.length > 0 && (
+              <optgroup label="Saved">
+                {savedPresets.map(p => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
-        </label>
 
-        {/* Camada 2: Per-Color Effects */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-
-          <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Color Effects:</span>
-
-          {COLOR_EFFECT_PRESETS.map(preset => (
-            <label key={`${preset.paletteIndex}-${preset.effect}`}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#ccc' }}>
-              <input
-                type="checkbox"
-                checked={colorEffects[preset.paletteIndex] === preset.effect}
-                onChange={() => toggleColorPreset(preset.paletteIndex, preset.effect)}
-              />
-              {preset.label}
-            </label>
-          ))}
-
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn-sharp" style={{ flex: 1 }} onClick={handleSave} disabled={!grid || isBuiltIn}>
+              🖫 Save
+            </button>
+            {isUserSaved && (
+              <button className="btn-sharp" onClick={handleDelete} title="Delete">
+                ✕
+              </button>
+            )}
+          </div>
         </div>
-
-        {/* Camada 3: Post-Processing */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-
-          <span style={{ fontSize: '0.85rem', color: '#ccc' }}>Post-Processing:</span>
-
-          {postEffects.map(fx => (
-            <label key={fx.type}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem', color: '#ccc' }}>
-              <input
-                type="checkbox"
-                checked={fx.enabled}
-                onChange={() => togglePostEffect(fx.type)}
-              />
-              {fx.type.charAt(0).toUpperCase() + fx.type.slice(1)}
-            </label>
-          ))}
-
-        </div>
-
 
 
       </div>
 
-      <button
-        className={`btn ${isLive ? 'btn-cancel' : 'btn-generate'}`}
-        onClick={handleAction}
-        disabled={!isLive && (!grid || status !== 'ready')}
-        style={{ backgroundColor: isLive ? '#e74c3c' : undefined }}
-      >
-        {isLive ? '🛑 Cancel Generation' : 'Generate (WFC)'}
-      </button>
 
-      <OutputGrid
-        source={output}
-        rows={GRID_OUT_ROWS}
-        cols={GRID_OUT_COLS}
-        palette={DEFAULT_PALETTE}
-        live={isLive}
-        renderMode={renderMode}
-        colorEffects={colorEffects}
-        postEffects={postEffects}
-      />
+      {/* CENTER PANEL: Modifiers & Generation */}
+      <div className="center-panel">
+
+        <label className="checkbox-label">
+          <input type="checkbox" checked={symmetry} onChange={(e) => setSymmetry(e.target.checked)} />
+          <span className="checkbox-custom"></span>
+          Symmetry (D4)
+        </label>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <span style={{ fontSize: '0.85rem' }}>Construction Visual:</span>
+          <select className="sharp-select" value={renderMode} onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}>
+            {RENDER_MODES.map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Camada 2: Per-Color Effects */}
+        <details className="custom-dropdown">
+
+          <summary>Color Effects <span>▼</span></summary>
+
+          <div className="dropdown-content">
+            {COLOR_EFFECT_PRESETS.map(preset => (
+              <label key={`${preset.paletteIndex}-${preset.effect}`} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={colorEffects[preset.paletteIndex] === preset.effect}
+                  onChange={() => toggleColorPreset(preset.paletteIndex, preset.effect)}
+                />
+                <span className="checkbox-custom"></span>
+                {preset.label}
+              </label>
+            ))}
+          </div>
+
+        </details>
+
+
+        {/* Camada 3: Post-Processing */}
+        <details className="custom-dropdown">
+
+          <summary>Post-Processing <span>▼</span></summary>
+
+          <div className="dropdown-content">
+            {postEffects.map(fx => (
+              <label key={fx.type} className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={fx.enabled}
+                  onChange={() => togglePostEffect(fx.type)}
+                />
+                <span className="checkbox-custom"></span>
+                {fx.type.charAt(0).toUpperCase() + fx.type.slice(1)}
+              </label>
+            ))}
+          </div>
+
+        </details>
+
+
+        <button
+          className="btn-sharp btn-generate"
+          onClick={handleAction}
+          disabled={!isLive && (!grid || status !== 'ready')}
+          style={{ backgroundColor: isLive ? '#5e2323' : undefined, borderColor: isLive ? '#5e2323' : undefined }}
+        >
+          {isLive ? '■ Cancel Generation' : 'Generate (WFC)'}
+        </button>
+
+
+      </div>
+
+      {/* RIGHT PANEL: Output Grid */}
+      <div className="right-panel">
+        <OutputGrid
+          source={output}
+          rows={GRID_OUT_ROWS}
+          cols={GRID_OUT_COLS}
+          palette={DEFAULT_PALETTE}
+          live={isLive}
+          renderMode={renderMode}
+          colorEffects={colorEffects}
+          postEffects={postEffects}
+        />
+      </div>
+
 
     </div>
+
+
   );
+
+
 }
 
 export default App;
