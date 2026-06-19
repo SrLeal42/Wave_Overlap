@@ -41,10 +41,11 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 		sumsOfWLogW:  make([]float64, numCells),
 		stack:        make([]stackEntry, 0, numCells),
 		toBanBuf:     make([]int, 0, N),
-		checkpoints:  make([]deltaCheckpoint, 0, 8),
-		maxBacktrack: 6,
-		pendingBans:  make([]banRecord, 0, 256),
+		checkpoints:  make([]deltaCheckpoint, 0, InitialCheckpointsCap),
+		maxBacktrack: DefaultMaxBacktrack,
+		pendingBans:  make([]banRecord, 0, InitialPendingBansCap),
 		rng:          rand.New(rand.NewSource(seed)),
+		maxSteps:     numCells * StepLimitFactor,
 	}
 
 	s.numColors = numColors
@@ -108,9 +109,20 @@ func (s *Solver) Solve(maxRetries int) ([]uint8, error) {
 
 func (s *Solver) Step() StepStatus {
 
+	s.stepCount++
+	if s.stepCount > s.maxSteps {
+		return StepContradiction
+	}
+
 	done, err := s.observe()
 
 	if err != nil {
+
+		s.consecutiveBacktracks++
+		if s.consecutiveBacktracks > MaxConsecutiveBacktracks {
+			return StepContradiction
+		}
+
 		// Contradição detectada no observe (numPoss == 0)
 		if s.backtrack() {
 			return StepContinue
@@ -124,6 +136,12 @@ func (s *Solver) Step() StepStatus {
 	}
 
 	if err := s.propagate(); err != nil {
+
+		s.consecutiveBacktracks++
+		if s.consecutiveBacktracks > MaxConsecutiveBacktracks {
+			return StepContradiction
+		}
+
 		// Contradição na propagação — tenta backtrack
 		if s.backtrack() {
 			return StepContinue
@@ -219,10 +237,10 @@ func (s *Solver) observe() (bool, error) {
 	}
 
 	chosen := s.choosePattern(minCell)
-	if s.numPoss[minCell] <= 4 {
-		s.saveCheckpoint(minCell, chosen)
-	}
-
+	// if s.numPoss[minCell] <= 4 {
+	// 	s.saveCheckpoint(minCell, chosen)
+	// }
+	s.saveCheckpoint(minCell, chosen)
 	s.collapseToPattern(minCell, chosen)
 
 	return false, nil
@@ -257,10 +275,10 @@ func (s *Solver) observeFull() (bool, error) {
 	}
 
 	chosen := s.choosePattern(minCell)
-	if s.numPoss[minCell] <= 4 {
-		s.saveCheckpoint(minCell, chosen)
-	}
-
+	// if s.numPoss[minCell] <= 4 {
+	// 	s.saveCheckpoint(minCell, chosen)
+	// }
+	s.saveCheckpoint(minCell, chosen)
 	s.collapseToPattern(minCell, chosen)
 
 	return false, nil
@@ -399,10 +417,35 @@ func (s *Solver) Reset(newSeed int64) {
 	numCells := s.outW * s.outH
 
 	s.rng = rand.New(rand.NewSource(newSeed))
-	s.stack = s.stack[:0]
-	s.toBanBuf = s.toBanBuf[:0]
-	s.checkpoints = s.checkpoints[:0]
-	s.pendingBans = s.pendingBans[:0]
+
+	// Ação 2.3: Realoca slices que cresceram demais, senão apenas reslicia
+	if cap(s.stack) > SliceShrinkThreshold {
+		s.stack = make([]stackEntry, 0, numCells)
+	} else {
+		s.stack = s.stack[:0]
+	}
+
+	if cap(s.toBanBuf) > SliceShrinkThreshold {
+		s.toBanBuf = make([]int, 0, N)
+	} else {
+		s.toBanBuf = s.toBanBuf[:0]
+	}
+
+	if cap(s.checkpoints) > SliceShrinkThreshold {
+		s.checkpoints = make([]deltaCheckpoint, 0, InitialCheckpointsCap)
+	} else {
+		s.checkpoints = s.checkpoints[:0]
+	}
+
+	if cap(s.pendingBans) > SliceShrinkThreshold {
+		s.pendingBans = make([]banRecord, 0, InitialPendingBansCap)
+	} else {
+		s.pendingBans = s.pendingBans[:0]
+	}
+
+	// Reseta contadores de controle
+	s.stepCount = 0
+	s.consecutiveBacktracks = 0
 
 	sumW := 0.0
 	sumWLogW := 0.0
@@ -414,7 +457,6 @@ func (s *Solver) Reset(newSeed int64) {
 
 	for i := range numCells {
 		s.wave[i].SetAll()
-
 		s.numPoss[i] = N
 		s.sumsOfW[i] = sumW
 		s.sumsOfWLogW[i] = sumWLogW
@@ -435,8 +477,16 @@ func (s *Solver) saveCheckpoint(cell, chosen int) {
 		bans:          s.pendingBans,
 	}
 
+	newCap := cap(cp.bans)
+	if newCap > PendingBansCapLimit {
+		newCap = PendingBansCapLimit
+	}
+	if newCap < InitialPendingBansCap {
+		newCap = InitialPendingBansCap
+	}
+
 	// Aloca novo slice para os próximos bans
-	s.pendingBans = make([]banRecord, 0, cap(cp.bans))
+	s.pendingBans = make([]banRecord, 0, newCap)
 
 	// Se excedeu a capacidade, descarta o mais antigo
 	if len(s.checkpoints) >= s.maxBacktrack {

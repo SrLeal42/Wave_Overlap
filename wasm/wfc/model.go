@@ -99,6 +99,11 @@ type Solver struct {
 	maxBacktrack int         // profundidade máxima de checkpoints
 	pendingBans  []banRecord // bans acumulados desde o último checkpoint
 
+	// Controle de limites (Ações 1.1 e 1.2)
+	maxSteps              int // limite de steps por tentativa
+	stepCount             int // contador de steps na tentativa atual
+	consecutiveBacktracks int // backtracks consecutivos sem progresso
+
 	rng *rand.Rand
 }
 
