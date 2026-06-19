@@ -51,9 +51,6 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 	s.numColors = numColors
 	s.bytesPerCell = (numColors + 7) / 8
 
-	s.dirty = make([]int, 0, numCells)
-	s.dirtySet = make([]bool, numCells)
-
 	// Pré-computa wLogW (evita math.Log repetido no ban)
 	s.wLogW = make([]float64, N)
 	for p, w := range model.Weights {
@@ -76,6 +73,18 @@ func NewSolver(model *Model, outW, outH int, numColors int, seed int64) *Solver 
 		s.sumsOfW[i] = sumW
 		s.sumsOfWLogW[i] = sumWLogW
 	}
+
+	// Pré-computa ruído e constrói heap
+	s.noise = make([]float64, numCells)
+	for i := range numCells {
+		s.noise[i] = s.rng.Float64() * EntropyNoiseFactor
+	}
+
+	baseEntropy := math.Log(sumW) - sumWLogW/sumW
+	s.entropyQ = newEntropyHeap(numCells)
+	s.entropyQ.Rebuild(numCells, func(cell int) float64 {
+		return baseEntropy + s.noise[cell]
+	})
 
 	return s
 }
@@ -181,107 +190,31 @@ func (s *Solver) Snapshot(buf []uint8) {
 
 // --- Observe ---
 
-// observe encontra a célula não-colapsada com menor entropia de Shannon,
-// colapsa ela para um único padrão (ponderado por peso).
-// Retorna (true, nil) se todas as células já estão colapsadas.
+// observe extrai a célula com menor entropia do heap e a colapsa.
+// Retorna (true, nil) se todas as células já estão colapsadas (heap vazio).
 func (s *Solver) observe() (bool, error) {
-	minEntropy := math.MaxFloat64
-	minCell := -1
-	// Se temos dirty cells, busca só entre elas + cells não-colapsadas que mudaram
-	// Senão (primeira iteração ou pós-reset), faz scan completo
-	if len(s.dirty) > 0 {
+	for {
 
-		allDone := true
-
-		for i, n := range s.numPoss {
-
-			if n == 0 {
-				return false, ErrContradiction
-			}
-
-			if n == 1 {
-				continue
-			}
-			allDone = false
-			// Só calcula entropia se a célula mudou
-			if !s.dirtySet[i] {
-				continue
-			}
-
-			entropy := math.Log(s.sumsOfW[i]) - s.sumsOfWLogW[i]/s.sumsOfW[i]
-			entropy += s.rng.Float64() * 1e-6
-
-			if entropy < minEntropy {
-				minEntropy = entropy
-				minCell = i
-			}
+		if s.entropyQ.Empty() {
+			return true, nil // todas as células colapsadas
 		}
 
-		// Limpa dirty set
-		for _, c := range s.dirty {
-			s.dirtySet[c] = false
-		}
-
-		s.dirty = s.dirty[:0]
-		if allDone {
-			return true, nil
-		}
-
-		// Se nenhuma dirty cell tinha n>1, faz fallback scan completo
-		if minCell == -1 {
-			return s.observeFull()
-		}
-
-	} else {
-		return s.observeFull()
-	}
-
-	chosen := s.choosePattern(minCell)
-	// if s.numPoss[minCell] <= 4 {
-	// 	s.saveCheckpoint(minCell, chosen)
-	// }
-	s.saveCheckpoint(minCell, chosen)
-	s.collapseToPattern(minCell, chosen)
-
-	return false, nil
-}
-
-// observeFull é o scan completo original — usado na primeira iteração e como fallback
-func (s *Solver) observeFull() (bool, error) {
-	minEntropy := math.MaxFloat64
-	minCell := -1
-
-	for i, n := range s.numPoss {
-
-		if n == 0 {
+		minCell := s.entropyQ.Pop()
+		if s.numPoss[minCell] == 0 {
 			return false, ErrContradiction
 		}
 
-		if n == 1 {
+		// Safety: se por alguma razão a célula já está colapsada, pula
+		if s.numPoss[minCell] == 1 {
 			continue
 		}
 
-		entropy := math.Log(s.sumsOfW[i]) - s.sumsOfWLogW[i]/s.sumsOfW[i]
-		entropy += s.rng.Float64() * 1e-6
+		chosen := s.choosePattern(minCell)
+		s.saveCheckpoint(minCell, chosen)
+		s.collapseToPattern(minCell, chosen)
 
-		if entropy < minEntropy {
-			minEntropy = entropy
-			minCell = i
-		}
+		return false, nil
 	}
-
-	if minCell == -1 {
-		return true, nil
-	}
-
-	chosen := s.choosePattern(minCell)
-	// if s.numPoss[minCell] <= 4 {
-	// 	s.saveCheckpoint(minCell, chosen)
-	// }
-	s.saveCheckpoint(minCell, chosen)
-	s.collapseToPattern(minCell, chosen)
-
-	return false, nil
 }
 
 // choosePattern faz amostragem ponderada e retorna o índice do padrão escolhido.
@@ -352,10 +285,16 @@ func (s *Solver) ban(cell, pattern int) {
 	s.sumsOfW[cell] -= s.model.Weights[pattern]
 	s.sumsOfWLogW[cell] -= s.wLogW[pattern]
 
-	if !s.dirtySet[cell] {
-		s.dirty = append(s.dirty, cell)
-		s.dirtySet[cell] = true
+	// Atualiza heap de entropias
+	if s.numPoss[cell] == 1 {
+		// Célula colapsada → remove do heap
+		s.entropyQ.Remove(cell)
+	} else if s.numPoss[cell] > 1 && s.entropyQ.Contains(cell) {
+		// Recalcula entropia e atualiza posição no heap
+		entropy := math.Log(s.sumsOfW[cell]) - s.sumsOfWLogW[cell]/s.sumsOfW[cell]
+		s.entropyQ.Update(cell, entropy+s.noise[cell])
 	}
+	// numPoss == 0: contradição, propagate() vai detectar
 
 	s.stack = append(s.stack, stackEntry{cell, pattern})
 }
@@ -462,10 +401,15 @@ func (s *Solver) Reset(newSeed int64) {
 		s.sumsOfWLogW[i] = sumWLogW
 	}
 
-	s.dirty = s.dirty[:0]
-	for i := range s.dirtySet {
-		s.dirtySet[i] = false
+	// Regenera ruído e reconstrói heap
+	for i := range numCells {
+		s.noise[i] = s.rng.Float64() * EntropyNoiseFactor
 	}
+	baseEntropy := math.Log(sumW) - sumWLogW/sumW
+	s.entropyQ.Rebuild(numCells, func(cell int) float64 {
+		return baseEntropy + s.noise[cell]
+	})
+
 }
 
 // saveCheckpoint fecha os pendingBans num deltaCheckpoint e empilha.
@@ -511,9 +455,17 @@ func (s *Solver) restoreFromBans(bans []banRecord) {
 		s.sumsOfW[b.cell] = b.prevSumW
 		s.sumsOfWLogW[b.cell] = b.prevSumWLogW
 
-		if !s.dirtySet[b.cell] {
-			s.dirty = append(s.dirty, b.cell)
-			s.dirtySet[b.cell] = true
+		// Atualiza heap: se a célula voltou a ter >1 possibilidade,
+		// ela precisa estar no heap com a entropia atualizada
+		if s.numPoss[b.cell] > 1 {
+			entropy := math.Log(s.sumsOfW[b.cell]) - s.sumsOfWLogW[b.cell]/s.sumsOfW[b.cell]
+
+			if s.entropyQ.Contains(b.cell) {
+				s.entropyQ.Update(b.cell, entropy+s.noise[b.cell])
+			} else {
+				s.entropyQ.Push(b.cell, entropy+s.noise[b.cell])
+			}
+
 		}
 
 	}

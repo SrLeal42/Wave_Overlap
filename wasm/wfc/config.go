@@ -36,4 +36,9 @@ const (
 	// SnapshotEvery define a cada quantos steps um snapshot é escrito no SAB
 	// durante a geração live.
 	SnapshotEvery = 64
+
+	// EntropyNoiseFactor é a amplitude do ruído adicionado à entropia
+	// para quebrar empates de forma aleatória.
+	// Pré-computado por célula e mantido constante durante uma tentativa.
+	EntropyNoiseFactor = 1e-6
 )

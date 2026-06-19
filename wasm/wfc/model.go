@@ -91,8 +91,8 @@ type Solver struct {
 
 	toBanBuf []int // buffer reutilizado para collapse
 
-	dirty    []int  // células que mudaram desde o último observe
-	dirtySet []bool // para evitar duplicatas
+	entropyQ *entropyHeap // min-heap indexado de entropias para observe()
+	noise    []float64    // ruído pré-computado por célula (tie-breaking)
 
 	// Delta checkpoints — armazena apenas os bans em vez do estado inteiro.
 	checkpoints  []deltaCheckpoint
