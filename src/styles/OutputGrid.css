@@ -4,8 +4,8 @@
 }
 
 .output-canvas {
-    width: 768px;
-    height: 768px;
+    width: var(--output-size);
+    height: var(--output-size);
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     border: 2px solid var(--border);

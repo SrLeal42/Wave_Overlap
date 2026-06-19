@@ -18,6 +18,21 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  /* Grid de desenho: 32px → 48px max (16×48 = 768px de grid, razoável em 4K) */
+  --cell-size: clamp(23px, 2.2vw, 32px);
+
+  /* Paleta: 36px → 48px max */
+  --swatch-size: clamp(28px, 2.5vw, 36px);
+
+  /* Output canvas: 768px → 1024px max */
+  --output-size: clamp(370px, 50vw, 768px);
+
+  /* Botão de tool: 42px → 52px max */
+  --tool-btn-size: clamp(34px, 2.8vw, 42px);
+
+  /* Center panel: 280px → 360px max */
+  --center-panel-width: clamp(220px, 20vw, 360px);
 }
 
 body {

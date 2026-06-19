@@ -178,7 +178,7 @@ function App() {
           externalGrid={presetGrid}
         />
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        <div className="preset-controls">
 
           <select className="sharp-select" onChange={handlePresetChange} value={selectedPresetId}>
             <option value="">Custom Drawing</option>
@@ -196,8 +196,8 @@ function App() {
             )}
           </select>
 
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn-sharp" style={{ flex: 1 }} onClick={handleSave} disabled={!grid || isBuiltIn}>
+          <div className="preset-actions">
+            <button className="btn-sharp preset-save-btn" onClick={handleSave} disabled={!grid || isBuiltIn}>
               🖫 Save
             </button>
             {isUserSaved && (
@@ -221,8 +221,8 @@ function App() {
           Symmetry (D4)
         </label>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <span style={{ fontSize: '0.85rem' }}>Construction Visual:</span>
+        <div className="control-group">
+          <span>Construction Visual:</span>
           <select className="sharp-select" value={renderMode} onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}>
             {RENDER_MODES.map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>
@@ -275,10 +275,9 @@ function App() {
 
 
         <button
-          className="btn-sharp btn-generate"
+          className={`btn-sharp btn-generate ${isLive ? 'cancel' : ''}`}
           onClick={handleAction}
           disabled={!isLive && (!grid || status !== 'ready')}
-          style={{ backgroundColor: isLive ? '#5e2323' : undefined, borderColor: isLive ? '#5e2323' : undefined }}
         >
           {isLive ? '■ Cancel Generation' : 'Generate (WFC)'}
         </button>
