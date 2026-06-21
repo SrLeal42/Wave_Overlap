@@ -5,6 +5,8 @@
  * Fragment shader: uber-shader com 4 modos visuais controlados por uMode.
  */
 
+import { NUM_COLOR_EFFECTS } from '../constants/Output';
+
 export const VERTEX_SHADER = `#version 300 es
 precision highp float;
 
@@ -177,7 +179,7 @@ uniform float uTime;               // Tempo em segundos (para animação)
 uniform vec2 uGridSize;            // (cols, rows)
 
 uniform int uColorEffect[32];   // Efeito per-color (0=None, 1=Pulse, ...)
-uniform vec4 uFxParams[5];  // Params por efeito: [Pulse, Rotate, Wave, Breathe, Glitch]
+uniform vec4 uFxParams[${NUM_COLOR_EFFECTS}];  // Params por efeito: [Pulse, Rotate, Wave, Breathe, Glitch, Stellar]
 
 // --- Bayer matrix 4x4 para dithering ---
 const int bayer4[16] = int[16](
@@ -335,6 +337,7 @@ const int FX_ROTATE  = 2;
 const int FX_WAVE    = 3;
 const int FX_BREATHE = 4;
 const int FX_GLITCH  = 5;
+const int FX_STELLAR = 6;
 
 vec3 applyColorEffect(vec3 color, int paletteIdx, vec2 cellPos) {
     int fx = uColorEffect[paletteIdx];
@@ -351,12 +354,30 @@ vec3 applyColorEffect(vec3 color, int paletteIdx, vec2 cellPos) {
     }
     
     if (fx == FX_ROTATE) {
-        // p.x=speed
+        // p.x=speed, p.y=numBracos (arms), p.z=hueRange (0..1 = fração do ciclo 2π)
         vec3 lab = rgbToOklab(color);
-        float angle = uTime * p.x;
-        float cosA = cos(angle);
-        float sinA = sin(angle);
+        
+        // Posição normalizada relativa ao centro da grid
+        vec2 center = cellPos / uGridSize - 0.5;
+        
+        // Ângulo espacial (posição da célula relativa ao centro)
+        float spatialAngle = atan(center.y, center.x);
+        
+        // Número de braços do moinho (default: 4 se p.y <= 0)
+        float arms = max(p.y, 3.0);
+        
+        // Ângulo de rotação: combina posição angular * braços + rotação temporal
+        float angle = spatialAngle * arms + uTime * p.x;
+        
+        // Range de variação do hue (p.z controla amplitude; default 1.0 = ciclo completo)
+        float hueRange = p.z > 0.0 ? p.z : 1.0;
+        float hueShift = fract(angle / 6.2831853) * 6.2831853 * hueRange;
+        
+        // Rotaciona os componentes a,b de OKLab pelo hue shift
+        float cosA = cos(hueShift);
+        float sinA = sin(hueShift);
         vec2 ab = vec2(lab.y * cosA - lab.z * sinA, lab.y * sinA + lab.z * cosA);
+        
         return oklabToRgb(vec3(lab.x, ab));
     }
     
@@ -377,14 +398,119 @@ vec3 applyColorEffect(vec3 color, int paletteIdx, vec2 cellPos) {
     }
     
     if (fx == FX_GLITCH) {
-        // p.x=speed (modula time), p.y=threshold
-        float noise = fract(sin(dot(cellPos + uTime * p.x, vec2(12.9898, 78.233))) * 43758.5453);
-        if (noise > p.y) {
-            vec3 lab = rgbToOklab(color);
-            lab.y = -lab.y;
-            return oklabToRgb(lab);
+        // p.x=speed, p.y=threshold (para block corruption)
+        
+        // ── Camada 1: Chromatic Aberration (base, sempre ativa, sutil) ──
+        // Cada canal RGB pulsa em fase diferente, criando shimmer cromático
+        float r = 0.85 + 0.15 * sin(uTime * 7.0 + cellPos.x * 0.3);
+        float g = 0.85 + 0.15 * sin(uTime * 7.0 + cellPos.y * 0.3 + 2.094);
+        float b = 0.85 + 0.15 * sin(uTime * 7.0 + (cellPos.x + cellPos.y) * 0.2 + 4.189);
+        vec3 result = color * vec3(r, g, b);
+        
+        // ── Camada 2: Scan Noise (ruído granular por faixa) ──
+        float scanBand = floor(cellPos.y / 2.0);
+        float scanTime = floor(uTime * p.x * 5.0);
+        float scanNoise = fract(sin(dot(vec2(scanBand, scanTime), vec2(78.233, 41.913))) * 43758.5453);
+        
+        if (scanNoise > 0.95) {
+            // Noise individual por fragmento dentro da faixa afetada
+            float pixelNoise = fract(sin(dot(cellPos + uTime * 17.0, vec2(12.9898, 78.233))) * 43758.5453);
+            vec3 lab = rgbToOklab(result);
+            // Perturba luminosidade com noise contínuo, não step binário
+            lab.x *= mix(0.5, 1.2, pixelNoise);
+            // Perturba chroma aleatoriamente
+            lab.yz *= mix(-0.2, 1.2, fract(pixelNoise * 7.3));
+            result = oklabToRgb(lab);
         }
-        return color;
+        
+        // ── Camada 3: Block Corruption (blocos com tamanho e ritmo variáveis) ──
+        
+        // Tamanho do bloco varia por região para quebrar a uniformidade
+        float bsNoise = fract(sin(dot(floor(cellPos / 8.0), vec2(53.1, 97.3))) * 43758.5453);
+        float blockSize = mix(3.0, 7.0, bsNoise);
+        vec2 block = floor(cellPos / blockSize);
+        
+        // Cada bloco tem seu próprio "ritmo" temporal — não mudam todos juntos
+        float blockRate = fract(sin(dot(block, vec2(41.7, 89.1))) * 43758.5453);
+        float blockTime = floor(uTime * p.x * (1.0 + blockRate * 4.0));
+        float blockNoise = fract(sin(dot(block + blockTime, vec2(127.1, 311.7))) * 43758.5453);
+        
+        if (blockNoise > p.y) {
+            // Hashes independentes para mais variedade de cor
+            float h1 = fract(sin(dot(block * 1.3 + blockTime * 0.7, vec2(269.5, 183.3))) * 43758.5453);
+            float h2 = fract(sin(dot(block * 2.7 + blockTime * 1.3, vec2(419.2, 371.9))) * 43758.5453);
+            
+            float hue = h1 * 6.2831853;
+            float chromaStrength = mix(0.05, 0.2, fract(h1 * 3.1));
+            vec3 corruptLab = vec3(
+                mix(0.2, 1.0, h2),
+                cos(hue) * chromaStrength,
+                sin(hue) * chromaStrength
+            );
+        
+            return oklabToRgb(corruptLab);
+        }
+        
+        return result;
+    }
+
+
+
+    if (fx == FX_STELLAR) {
+        // Starfield com estrelas se movendo em direção à câmera
+        // p.x=speed, p.y=density (0.1~0.5), p.z=numLayers
+        
+        vec2 uv = cellPos / uGridSize - 0.5; // centrado -0.5..0.5
+        
+        float starBright = 0.0;
+        int numLayers = int(max(p.z, 3.0));
+        
+        for (int layer = 0; layer < 5; layer++) {
+            if (layer >= numLayers) break;
+            
+            float fl = float(layer);
+            
+            // Cada camada avança em fase diferente para distribuir as estrelas
+            float t = fract(uTime * p.x * 0.08 + fl * 0.25);
+            
+            // Zoom: começa ampliado (estrelas perto do centro), expande (estrelas nas bordas)
+            // t² dá sensação de aceleração ao se aproximar
+            float scale = mix(30.0, 3.0, t * t);
+            vec2 scaledUV = uv * scale;
+            
+            // Divide o espaço em grid para posicionar estrelas
+            vec2 tileCell = floor(scaledUV);
+            vec2 tileUV = fract(scaledUV) - 0.5;
+            
+            // Hash pseudo-aleatório por célula do tile
+            float hash = fract(sin(dot(tileCell + fl * 127.0, vec2(12.9898, 78.233))) * 43758.5453);
+            
+            // Só ~30% das células têm estrela (p.y controla densidade)
+            float threshold = 1.0 - clamp(p.y, 0.1, 0.5);
+            if (hash > threshold) {
+                // Posição da estrela com jitter dentro da célula
+                vec2 offset = vec2(
+                    fract(hash * 17.3) - 0.5,
+                    fract(hash * 31.7) - 0.5
+                ) * 0.6;
+                
+                float d = length(tileUV - offset);
+                
+                // Tamanho cresce conforme a estrela "se aproxima"
+                float size = mix(0.03, 0.09, t);
+                float star = smoothstep(size, size * 0.1, d);
+                
+                // Fade: aparece rápido, visível por bastante tempo, desaparece no fim
+                float fade = smoothstep(0.0, 0.1, t) * smoothstep(1.0, 0.85, t);
+                
+                // Brilho aumenta conforme "se aproxima"
+                float depthBright = mix(0.3, 1.0, t);
+                
+                starBright += star * fade * depthBright;
+            }
+        }
+        
+        return mix(color, vec3(1.0), clamp(starBright, 0.0, 1.0));
     }
     
     return color;

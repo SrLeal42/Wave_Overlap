@@ -5,8 +5,7 @@ import { compileShader, createProgram, createBitmaskTexture, hexToNormalizedRGBA
 import type { PaletteColor } from '../types/Grid';
 import type { PostEffect } from '../types/PostEffect';
 
-import { DEFAULT_FX_PARAMS, RenderMode } from '../constants/Output';
-import type { ColorEffect } from '../constants/Output';
+import { DEFAULT_FX_PARAMS, RenderMode, ColorEffect, NUM_COLOR_EFFECTS } from '../constants/Output';
 
 export class WFCRenderer {
 
@@ -348,17 +347,17 @@ export class WFCRenderer {
     /**
     * Seta os parâmetros dos efeitos per-color.
     * Recebe um mapa de ColorEffect → {speed, param1, param2, param3}.
-    * Converte para o uniform vec4 uFxParams[5].
+    * Converte para o uniform vec4 uFxParams[].
     */
     setEffectParams(params: Record<number, { speed: number; param1: number; param2: number; param3: number }>): void {
         const gl = this.gl;
 
         gl.useProgram(this.program);
 
-        // 5 efeitos × 4 floats = 20 floats
-        const data = new Float32Array(5 * 4);
+        // NUM_COLOR_EFFECTS × 4 floats = 20 floats
+        const data = new Float32Array(NUM_COLOR_EFFECTS * 4);
 
-        for (let fx = 1; fx <= 5; fx++) {
+        for (let fx = 1; fx <= NUM_COLOR_EFFECTS; fx++) {
             const p = params[fx];
             if (p) {
                 const offset = (fx - 1) * 4;
