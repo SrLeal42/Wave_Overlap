@@ -7,6 +7,8 @@ export const GRID_OUT_ROWS = 256;//128;
 export const GRID_OUT_COLS = 256;//128;
 export const GRID_PATTERN_SIZE = 3;
 
+export const MAX_HISTORY = 20;
+
 export const WFC_MAX_RETRIES = 10;
 
 // Paleta padrão — 6 cores suficientes para padrões interessantes com P=3

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 
 import type { Grid, DrawingGridProps, DrawingTool } from '../types/Grid';
-import { DEFAULT_PALETTE, GRID_ROWS, GRID_COLS } from '../constants/Grid';
+import { DEFAULT_PALETTE, GRID_ROWS, GRID_COLS, MAX_HISTORY } from '../constants/Grid';
 import { ColorPalette } from './ColorPalette';
 
 import { brushPaint, bucketFill } from '../utils/Utilities';
@@ -26,6 +26,8 @@ export function DrawingGrid({
     const [activeTool, setActiveTool] = useState<DrawingTool>('brush');
     const [isPainting, setIsPainting] = useState(false);
 
+    const [history, setHistory] = useState<Grid[]>([]);
+
     const isPaintingRef = useRef(false);
     const gridRef = useRef(grid);
     // Mantém a ref sincronizada com o state
@@ -34,6 +36,7 @@ export function DrawingGrid({
     useEffect(() => {
 
         if (externalGrid) {
+            setHistory([]);
             setGrid(externalGrid);
             onGridChange?.(externalGrid, false);
         }
@@ -58,12 +61,54 @@ export function DrawingGrid({
     }, [onGridChange]);
 
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+                e.preventDefault();
+                handleUndo();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [history]);
+
+
+
+
+    const pushHistory = () => {
+        setHistory(prev => {
+            const snapshot = gridRef.current.map(row => [...row]); // deep copy
+            const next = [...prev, snapshot];
+            // Limita o tamanho do history
+            return next.length > MAX_HISTORY ? next.slice(-MAX_HISTORY) : next;
+        });
+    };
+
+
+
     const handleClear = () => {
+        pushHistory();
         const empty = createEmptyGrid(rows, cols);
         setGrid(empty);
         onGridChange?.(empty, true);
     };
 
+    const handleUndo = () => {
+        if (history.length === 0) return;
+
+        setHistory(prev => {
+            const next = [...prev];
+            const restored = next.pop()!;
+
+            setGrid(restored);
+            onGridChange?.(restored, true);
+
+            return next;
+        });
+
+    };
 
 
     return (
@@ -92,13 +137,17 @@ export function DrawingGrid({
 
                                 if (activeTool === 'brush') {
 
+                                    pushHistory();
                                     setIsPainting(true);
                                     isPaintingRef.current = true;
                                     setGrid(prev => brushPaint(prev, r, c, selectedColor));
 
                                 } else if (activeTool === 'bucket') {
 
+                                    pushHistory();
+
                                     const newGrid = bucketFill(gridRef.current, r, c, selectedColor);
+
                                     setGrid(newGrid);
                                     onGridChange?.(newGrid, true);  // bucket é instantâneo, já dispara
 
@@ -121,6 +170,15 @@ export function DrawingGrid({
 
                 <button className="btn btn-clear" onClick={handleClear}>
                     Clear
+                </button>
+
+                <button
+                    className="btn btn-undo"
+                    onClick={handleUndo}
+                    disabled={history.length === 0}
+                    title="Undo (Ctrl+Z)"
+                >
+                    ↶ Undo
                 </button>
 
                 <div className="tool-selector">

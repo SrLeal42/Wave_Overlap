@@ -104,3 +104,26 @@
     border-color: var(--accent);
     color: var(--bg);
 }
+
+.btn-undo {
+    /* flex: 1; */
+    background: var(--bg);
+    color: var(--text);
+    border: 2px solid var(--border);
+    border-radius: 0;
+    font-family: var(--mono);
+    cursor: pointer;
+    padding: 0.6rem;
+    transition: none;
+    opacity: 1;
+}
+
+.btn-undo:hover:not(:disabled) {
+    background: var(--border);
+    color: var(--text-h);
+}
+
+.btn-undo:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
