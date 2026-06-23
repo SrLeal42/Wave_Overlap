@@ -1,7 +1,7 @@
 import type { Grid, CellValue } from '../types/Grid';
 import type { DrawingPreset } from '../types/DrawingPreset';
 import type { ColorEffect, PostEffectConfig } from '../constants/Output';
-import type { SharePayload, DecodedShareState } from '../types/SharedPayload';
+import type { DecodedShareState } from '../types/SharedPayload';
 import { STORAGE_KEY } from '../constants/DrawingPreset';
 
 /**
@@ -274,12 +274,12 @@ function fromBase64Url(str: string): Uint8Array {
 
 // ── Compression (native CompressionStream) ──
 async function compress(data: Uint8Array): Promise<Uint8Array> {
-    const stream = new Blob([data]).stream()
+    const stream = new Blob([data as any]).stream()
         .pipeThrough(new CompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 async function decompress(data: Uint8Array): Promise<Uint8Array> {
-    const stream = new Blob([data]).stream()
+    const stream = new Blob([data as any]).stream()
         .pipeThrough(new DecompressionStream('deflate-raw'));
     return new Uint8Array(await new Response(stream).arrayBuffer());
 }

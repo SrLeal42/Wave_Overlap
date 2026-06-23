@@ -47,6 +47,9 @@ function App() {
   const isBuiltIn = BUILTIN_PRESETS.some(p => p.id === selectedPresetId);
 
   const [seedText, setSeedText] = useState('');
+  const [randomSeedBool, setRandomSeedBool] = useState(false);
+
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
 
 
@@ -73,7 +76,7 @@ function App() {
 
     // Resolve a seed: se vazia, gera uma aleatória e mostra no campo
     let currentSeed = seedText;
-    if (!currentSeed) {
+    if (!currentSeed || randomSeedBool) {
       currentSeed = generateRandomSeed();
       setSeedText(currentSeed);
     }
@@ -171,7 +174,7 @@ function App() {
 
   };
 
-  const handleShare = async () => {
+  const handleShareLink = async () => {
 
     if (!grid) return;
 
@@ -290,10 +293,9 @@ function App() {
 
           <button
             className="btn-sharp btn-share"
-            onClick={handleShare}
-            disabled={!grid}
+            onClick={() => setIsShareModalOpen(true)}
           >
-            {showCopied ? '✓ Copied!' : '⛓ Share'}
+            Share
           </button>
 
         </div>
@@ -314,12 +316,21 @@ function App() {
 
         </div>
 
+        <div className='checkbox-container'>
 
-        <label className="checkbox-label">
-          <input type="checkbox" checked={symmetry} onChange={(e) => setSymmetry(e.target.checked)} />
-          <span className="checkbox-custom"></span>
-          Symmetry (D4)
-        </label>
+          <label className="checkbox-label">
+            <input type="checkbox" checked={symmetry} onChange={(e) => setSymmetry(e.target.checked)} />
+            <span className="checkbox-custom"></span>
+            Symmetry (D4)
+          </label>
+
+          <label className="checkbox-label">
+            <input type="checkbox" checked={randomSeedBool} onChange={(e) => setRandomSeedBool(e.target.checked)} />
+            <span className="checkbox-custom"></span>
+            Random Seed
+          </label>
+
+        </div>
 
         <div className="control-group">
           <span>Construction Visual:</span>
@@ -397,6 +408,40 @@ function App() {
           postEffects={postEffects}
         />
       </div>
+
+
+      {/* Modal de Compartilhamento */}
+      {isShareModalOpen && (
+
+        <div className="modal-overlay" onClick={() => setIsShareModalOpen(false)}>
+
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+
+            <div className="modal-header">
+              <h3>Share Options</h3>
+              <button className="btn-sharp" onClick={() => setIsShareModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <button className="btn-sharp" onClick={handleShareLink}>
+                {showCopied ? '✓ Copied!' : '⛓ Link'}
+              </button>
+
+              <button className="btn-sharp" onClick={() => { /* Futuro: Exportar JPG/GIF */ }}>
+                🖼 JPG / GIF
+              </button>
+
+              <button className="btn-sharp" onClick={() => { /* Futuro: Exportar JSON */ }}>
+                {'{ }'} JSON
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
 
 
     </div>

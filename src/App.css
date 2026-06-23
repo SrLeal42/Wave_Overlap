@@ -146,6 +146,13 @@
   /* Fundo um pouco mais escuro para as opções */
 }
 
+/* Container for checkbox */
+.checkbox-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+
 /* Custom Checkbox */
 .checkbox-label {
   display: flex;
@@ -241,4 +248,53 @@
 .btn-share {
   width: 100%;
   font-size: 0.85rem;
+}
+
+
+
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: var(--bg);
+  border: 2px solid var(--border);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 250px;
+  box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.5);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0.8rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.1rem;
+  color: var(--text-h);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
 }
