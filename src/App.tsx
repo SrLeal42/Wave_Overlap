@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useWasm } from './wasm/useWasm';
 
 import { DrawingGrid } from './components/DrawingGrid';
@@ -15,7 +15,11 @@ import {
 import type { Grid } from './types/Grid';
 import type { DrawingPreset } from './types/DrawingPreset';
 
-import { gridToFlat, loadSavedPresets, savePreset, deletePreset, printSavedPresetInterface } from './utils/Utilities';
+import {
+  gridToFlat, loadSavedPresets, savePreset, deletePreset, printSavedPresetInterface,
+  cyrb53, generateRandomSeed, encodeShareState, decodeShareState
+} from './utils/Utilities';
+
 
 import './App.css';
 
@@ -42,6 +46,10 @@ function App() {
   const isUserSaved = savedPresets.some(p => p.id === selectedPresetId);
   const isBuiltIn = BUILTIN_PRESETS.some(p => p.id === selectedPresetId);
 
+  const [seedText, setSeedText] = useState('');
+  const [showCopied, setShowCopied] = useState(false);
+
+
   const handleGridChange = (grid: Grid, isUserEdit?: boolean) => {
     setGrid(grid);
 
@@ -62,6 +70,13 @@ function App() {
   const handleGenerate = async () => {
 
     if (!grid || status !== 'ready') return;
+
+    // Resolve a seed: se vazia, gera uma aleatória e mostra no campo
+    let currentSeed = seedText;
+    if (!currentSeed) {
+      currentSeed = generateRandomSeed();
+      setSeedText(currentSeed);
+    }
 
     const flat = gridToFlat(grid);
 
@@ -85,7 +100,7 @@ function App() {
           outW: GRID_OUT_ROWS,
           outH: GRID_OUT_COLS,
           numColors: DEFAULT_PALETTE.length,
-          seed: Date.now(),
+          seed: cyrb53(currentSeed),
           maxRetries: WFC_MAX_RETRIES,
           symmetry
         },
@@ -156,6 +171,27 @@ function App() {
 
   };
 
+  const handleShare = async () => {
+
+    if (!grid) return;
+
+    const encoded = await encodeShareState(
+      grid, seedText, symmetry, colorEffects, postEffects
+    );
+
+    const url = `${window.location.origin}${window.location.pathname}?s=${encoded}`;
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setShowCopied(true);
+      setTimeout(() => setShowCopied(false), 2000);
+    } catch {
+      prompt('Copy this URL:', url);
+    }
+
+  };
+
+
   const togglePostEffect = (type: PostEffectType) => {
 
     setPostEffects(prev => prev.map(e =>
@@ -163,6 +199,41 @@ function App() {
     ));
 
   };
+
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const encoded = params.get('s');
+
+    if (!encoded) return;
+
+    decodeShareState(encoded, GRID_ROWS, GRID_COLS)
+      .then(state => {
+
+        setPresetGrid(state.grid);
+        setSeedText(state.seedText);
+        setSymmetry(state.symmetry);
+
+        if (state.colorEffects.length > 0) {
+          setColorEffects(prev => state.colorEffects.length >= prev.length
+            ? state.colorEffects as typeof prev
+            : [...state.colorEffects, ...prev.slice(state.colorEffects.length)] as typeof prev
+          );
+        }
+
+        setPostEffects(prev => prev.map((e, i) => ({
+          ...e,
+          enabled: state.postEffectsEnabled[i] ?? e.enabled,
+        })));
+
+        setSelectedPresetId('');
+        // Limpa a URL sem reload
+        window.history.replaceState({}, '', window.location.pathname);
+      })
+      .catch(err => console.error('[Share] Failed to decode URL:', err));
+
+  }, []);
+
 
 
 
@@ -214,6 +285,35 @@ function App() {
 
       {/* CENTER PANEL: Modifiers & Generation */}
       <div className="center-panel">
+
+        <div className="share-group">
+
+          <button
+            className="btn-sharp btn-share"
+            onClick={handleShare}
+            disabled={!grid}
+          >
+            {showCopied ? '✓ Copied!' : '⛓ Share'}
+          </button>
+
+        </div>
+
+
+        <div className="control-group">
+          <span>Seed:</span>
+
+          <input
+            type="text"
+            className="sharp-input"
+            value={seedText}
+            onChange={(e) => setSeedText(e.target.value)}
+            placeholder="Random"
+            spellCheck={false}
+            autoComplete="off"
+          />
+
+        </div>
+
 
         <label className="checkbox-label">
           <input type="checkbox" checked={symmetry} onChange={(e) => setSymmetry(e.target.checked)} />
@@ -281,7 +381,6 @@ function App() {
         >
           {isLive ? '■ Cancel Generation' : 'Generate (WFC)'}
         </button>
-
 
       </div>
 

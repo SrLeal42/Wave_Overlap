@@ -1,5 +1,7 @@
 import type { Grid, CellValue } from '../types/Grid';
 import type { DrawingPreset } from '../types/DrawingPreset';
+import type { ColorEffect, PostEffectConfig } from '../constants/Output';
+import type { SharePayload, DecodedShareState } from '../types/SharedPayload';
 import { STORAGE_KEY } from '../constants/DrawingPreset';
 
 /**
@@ -214,4 +216,191 @@ export function hexToNormalizedRGBA(hex: string): [number, number, number, numbe
     const a = raw.length >= 8 ? parseInt(raw.slice(6, 8), 16) / 255 : 1.0;
     return [r, g, b, a];
 }
+
+
+
+
+// ── Seed ──
+/**
+ * Hash determinístico string → number (53 bits, safe para Number).
+ * Usado para converter seed alfanumérica em número para o WASM.
+ */
+export function cyrb53(str: string, seed: number = 0): number {
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+
+    for (let i = 0; i < str.length; i++) {
+        const ch = str.charCodeAt(i);
+        h1 = Math.imul(h1 ^ ch, 2654435761);
+        h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+    h1 ^= Math.imul(h2 ^ (h2 >>> 16), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+    h2 ^= Math.imul(h1 ^ (h1 >>> 16), 3266489909);
+
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+}
+
+/** Gera seed aleatória alfanumérica (8 chars). */
+export function generateRandomSeed(): string {
+    return Math.random().toString(36).slice(2, 10);
+}
+
+
+// ── Base64 URL-safe ──
+function toBase64Url(bytes: Uint8Array): string {
+    const binary = String.fromCharCode(...bytes);
+    return btoa(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+}
+
+function fromBase64Url(str: string): Uint8Array {
+    let b64 = str.replace(/-/g, '+').replace(/_/g, '/');
+
+    while (b64.length % 4) b64 += '=';
+
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+
+    return bytes;
+}
+
+// ── Compression (native CompressionStream) ──
+async function compress(data: Uint8Array): Promise<Uint8Array> {
+    const stream = new Blob([data]).stream()
+        .pipeThrough(new CompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function decompress(data: Uint8Array): Promise<Uint8Array> {
+    const stream = new Blob([data]).stream()
+        .pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+
+// ── Grid: nibble-pack (4 bits por célula, 2 células por byte) ──
+
+function packGrid(grid: Grid): Uint8Array {
+    const flat = grid.flat();
+    const bytes = new Uint8Array(Math.ceil(flat.length / 2));
+
+    for (let i = 0; i < flat.length; i += 2) {
+        const hi = flat[i] & 0xF;
+        const lo = (i + 1 < flat.length ? flat[i + 1] : 0) & 0xF;
+        bytes[i >> 1] = (hi << 4) | lo;
+    }
+
+    return bytes;
+}
+
+function unpackGrid(bytes: Uint8Array, offset: number, rows: number, cols: number): Grid {
+    const total = rows * cols;
+    const flat: number[] = [];
+
+    for (let i = 0; i < Math.ceil(total / 2); i++) {
+        flat.push((bytes[offset + i] >> 4) & 0xF);
+        if (flat.length < total) {
+            flat.push(bytes[offset + i] & 0xF);
+        }
+    }
+
+    const grid: Grid = [];
+    for (let r = 0; r < rows; r++) {
+        grid.push(flat.slice(r * cols, (r + 1) * cols));
+    }
+
+    return grid;
+}
+
+
+// ── Encode / Decode (formato binário v1) ──
+
+export async function encodeShareState(
+    grid: Grid,
+    seedText: string,
+    symmetry: boolean,
+    colorEffects: ColorEffect[],
+    postEffects: PostEffectConfig[],
+): Promise<string> {
+
+    const seedBytes = new TextEncoder().encode(seedText);
+    const gridBytes = packGrid(grid);
+    const numCE = colorEffects.length;
+
+    // Flags byte: bit0=symmetry, bits 1..N = postEffects[i].enabled
+    let flags = symmetry ? 1 : 0;
+    postEffects.forEach((e, i) => {
+        if (e.enabled) flags |= (1 << (i + 1));
+    });
+
+    // Monta buffer binário
+    const totalLen = 1 + 1 + 1 + seedBytes.length + 1 + numCE + gridBytes.length;
+    const buf = new Uint8Array(totalLen);
+    let off = 0;
+
+    buf[off++] = 1;                              // version
+    buf[off++] = flags;                          // symmetry + post effects
+    buf[off++] = seedBytes.length;               // seed length
+    buf.set(seedBytes, off); off += seedBytes.length;  // seed data
+    buf[off++] = numCE;                          // num color effects
+    for (let i = 0; i < numCE; i++) {
+        buf[off++] = colorEffects[i] as number;    // color effect per palette slot
+    }
+    buf.set(gridBytes, off);                     // nibble-packed grid
+
+    const compressed = await compress(buf);
+
+    return toBase64Url(compressed);
+}
+
+
+export async function decodeShareState(
+    encoded: string,
+    gridRows: number,
+    gridCols: number,
+): Promise<DecodedShareState> {
+
+    const compressed = fromBase64Url(encoded);
+    const buf = await decompress(compressed);
+    let off = 0;
+
+    /*const _version =*/ buf[off++];                // version (1 por agora)
+    const flags = buf[off++];                    // flags byte
+    const symmetry = (flags & 1) !== 0;
+
+    const seedLen = buf[off++];
+    const seedText = new TextDecoder().decode(buf.slice(off, off + seedLen));
+    off += seedLen;
+
+    const numCE = buf[off++];
+    const colorEffects: number[] = [];
+    for (let i = 0; i < numCE; i++) {
+        colorEffects.push(buf[off++]);
+    }
+
+    // Post effects: flags bits 1..7
+    const postEffectsEnabled: boolean[] = [];
+    for (let i = 1; i <= 7; i++) {
+        postEffectsEnabled.push((flags & (1 << i)) !== 0);
+    }
+
+    // Grid nibble-unpack
+    const grid = unpackGrid(buf, off, gridRows, gridCols);
+
+    return { grid, seedText, symmetry, colorEffects, postEffectsEnabled };
+}
+
+
+
+
+
+
+
 

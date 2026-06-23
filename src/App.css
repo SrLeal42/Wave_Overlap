@@ -207,3 +207,38 @@
   background-color: #5e2323;
   border-color: #5e2323;
 }
+
+/* Sharp Text Input (segue o padrão do sharp-select) */
+.sharp-input {
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  padding: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  border-radius: 0;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.sharp-input:focus,
+.sharp-input:hover {
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
+.sharp-input::placeholder {
+  color: var(--border);
+  font-style: italic;
+}
+
+/* Share Button */
+.share-group {
+  display: flex;
+}
+
+.btn-share {
+  width: 100%;
+  font-size: 0.85rem;
+}
