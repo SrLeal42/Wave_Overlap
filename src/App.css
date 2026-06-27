@@ -136,6 +136,15 @@
   color: var(--text-h);
 }
 
+.custom-dropdown summary>span {
+  transition: transform 0.25s;
+  display: inline-block;
+}
+
+.custom-dropdown[open] summary>span {
+  transform: rotate(-180deg);
+}
+
 .dropdown-content {
   padding: 1rem;
   display: flex;
