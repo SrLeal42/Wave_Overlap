@@ -298,3 +298,38 @@
   flex-direction: column;
   gap: 0.8rem;
 }
+
+
+/* ── Save Modal ── */
+.modal-save {
+  min-width: 320px;
+  max-width: 420px;
+}
+
+.modal-label {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.modal-footnote {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: #283b2b;
+  margin: 0;
+  line-height: 1.4;
+  padding-left: 0.6rem;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  border-top: 2px solid var(--border);
+  padding-top: 1rem;
+}
+
+.modal-actions .btn-sharp {
+  min-width: 90px;
+}

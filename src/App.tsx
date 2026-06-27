@@ -49,6 +49,9 @@ function App() {
   const [seedText, setSeedText] = useState('');
   const [randomSeedBool, setRandomSeedBool] = useState(false);
 
+  const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
+  const [saveDrawingName, setSaveDrawingName] = useState('');
+
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
 
@@ -138,17 +141,25 @@ function App() {
 
     if (!grid) return;
 
+    setIsSaveModalOpen(true);
+    setSaveDrawingName('');
+
+  };
+
+  const handleConfirmSave = () => {
+
+    if (!grid || !saveDrawingName.trim()) return;
+
     const id = `saved_${Date.now()}`;
-    const label = prompt('Nome do desenho:');   // ou um input inline se preferir algo mais polido
-
-    if (!label) return;
-
+    const label = saveDrawingName.trim();
     const preset: DrawingPreset = { id, label: `🖫 ${label}`, grid };
 
     printSavedPresetInterface(grid, label);
-
     savePreset(preset);
-    setSavedPresets(loadSavedPresets());  // re-sincroniza o estado
+    setSavedPresets(loadSavedPresets());
+
+    setIsSaveModalOpen(false);
+    setSaveDrawingName('');
 
   };
 
@@ -408,6 +419,56 @@ function App() {
           postEffects={postEffects}
         />
       </div>
+
+      {/* Modal de Salvar Desenho */}
+      {isSaveModalOpen && (
+
+        <div className="modal-overlay" onClick={() => setIsSaveModalOpen(false)}>
+
+          <div className="modal-content modal-save" onClick={(e) => e.stopPropagation()}>
+
+            <div className="modal-header">
+              <h3>Save Drawing</h3>
+              <button className="btn-sharp" onClick={() => setIsSaveModalOpen(false)}>✕</button>
+            </div>
+
+            <div className="modal-body">
+              <label className="modal-label">Enter a name:</label>
+              <input
+                type="text"
+                className="sharp-input"
+                value={saveDrawingName}
+                onChange={(e) => setSaveDrawingName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleConfirmSave(); }}
+                placeholder="My Pattern"
+                spellCheck={false}
+                autoComplete="off"
+                autoFocus
+              />
+              <p className="modal-footnote">
+                The drawing will be saved locally and available in the Preset selector.
+              </p>
+            </div>
+
+            <div className="modal-actions">
+              <button
+                className="btn-sharp btn-generate"
+                onClick={handleConfirmSave}
+                disabled={!saveDrawingName.trim()}
+              >
+                Save
+              </button>
+              <button className="btn-sharp" onClick={() => setIsSaveModalOpen(false)}>
+                Cancel
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
 
 
       {/* Modal de Compartilhamento */}
