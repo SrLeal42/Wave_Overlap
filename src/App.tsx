@@ -3,6 +3,7 @@ import { useWasm } from './wasm/useWasm';
 
 import { DrawingGrid } from './components/DrawingGrid';
 import { OutputGrid } from './components/OutputGrid';
+import { HintTip } from './components/HintTip';
 
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
@@ -333,18 +334,26 @@ function App() {
             <input type="checkbox" checked={symmetry} onChange={(e) => setSymmetry(e.target.checked)} />
             <span className="checkbox-custom"></span>
             Symmetry (D4)
+            <HintTip
+              text="Extracts rotated and reflected versions of each pattern, producing results with 4-fold symmetry."
+              position="right"
+            />
           </label>
 
           <label className="checkbox-label">
             <input type="checkbox" checked={randomSeedBool} onChange={(e) => setRandomSeedBool(e.target.checked)} />
             <span className="checkbox-custom"></span>
             Random Seed
+            <HintTip text="Generates a new random seed on each run." position="right" />
           </label>
 
         </div>
 
         <div className="control-group">
-          <span>Construction Visual:</span>
+          <span>
+            Construction Visual:
+            <HintTip text="How uncollapsed cells are displayed during generation." position="right" />
+          </span>
           <select className="sharp-select" value={renderMode} onChange={(e) => setRenderMode(Number(e.target.value) as RenderMode)}>
             {RENDER_MODES.map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>

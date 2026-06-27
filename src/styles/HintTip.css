@@ -1,0 +1,70 @@
+.hint-tip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: help;
+}
+
+.hint-tip-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    font-family: var(--mono);
+    color: var(--border);
+    border: 1.5px solid var(--border);
+    line-height: 1;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.hint-tip:hover .hint-tip-icon {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+/* ── Bubble ── */
+.hint-tip-bubble {
+    position: absolute;
+    z-index: 999;
+    background: #0e0e0e;
+    border: 1.5px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.7rem;
+    font-weight: 400;
+    line-height: 1.45;
+    padding: 0.5rem 0.65rem;
+    width: max-content;
+    max-width: 220px;
+    pointer-events: none;
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Positions ── */
+.hint-tip-top {
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.hint-tip-bottom {
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.hint-tip-left {
+    right: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.hint-tip-right {
+    left: calc(100% + 6px);
+    top: 50%;
+    transform: translateY(-50%);
+}
