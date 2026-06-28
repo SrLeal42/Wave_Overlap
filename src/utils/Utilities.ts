@@ -1,8 +1,13 @@
+import { GIFEncoder, quantize, applyPalette } from 'gifenc';
+
 import type { Grid, CellValue } from '../types/Grid';
 import type { DrawingPreset } from '../types/DrawingPreset';
-import type { ColorEffect, PostEffectConfig } from '../constants/Output';
 import type { DecodedShareState } from '../types/SharedPayload';
+import type { GifExportOptions } from '../types/GIFExporter';
+
+import type { ColorEffect, PostEffectConfig } from '../constants/Output';
 import { STORAGE_KEY } from '../constants/DrawingPreset';
+import { GIF_FPS, GIF_DURATION, GIF_TIME_SCALE, GIF_MAX_COLORS, YIELD_INTERVAL } from '../constants/GIFExporter';
 
 /**
  * Achata um Grid 2D para Uint8Array (row-major).
@@ -398,6 +403,71 @@ export async function decodeShareState(
 }
 
 
+
+/**
+ * Captura a animação dos efeitos visuais como GIF.
+ * Renderiza offline (tempo controlado), frame a frame.
+ */
+export async function exportGif(options: GifExportOptions): Promise<Blob> {
+
+    const { renderer, source, width, height, onProgress } = options;
+
+    const gl = renderer.getContext();
+    const totalFrames = Math.round(GIF_FPS * GIF_DURATION);
+    const delay = Math.round(1000 / GIF_FPS);
+
+    const gif = GIFEncoder();
+
+    const pixelBuffer = new Uint8Array(width * height * 4);
+
+    for (let i = 0; i < totalFrames; i++) {
+
+        const time = (i / GIF_FPS) * GIF_TIME_SCALE;
+        // 1. Render com tempo controlado
+        renderer.render(source, time);
+        // 2. Lê pixels do canvas (mesmo task = seguro sem preserveDrawingBuffer)
+        gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixelBuffer);
+        // 3. Flip vertical (WebGL Y é invertido em relação ao GIF)
+        flipY(pixelBuffer, width, height);
+        // 4. Quantiza para paleta ≤256 cores e indexa
+        const palette = quantize(pixelBuffer, GIF_MAX_COLORS);
+        const indexed = applyPalette(pixelBuffer, palette);
+        // 5. Adiciona frame ao GIF
+        gif.writeFrame(indexed, width, height, { palette, delay });
+        // 6. Yield periódico para manter UI responsiva
+        if (i % YIELD_INTERVAL === 0) {
+            onProgress?.(Math.round((i / totalFrames) * 100));
+            await yieldToMain();
+        }
+    }
+
+    gif.finish();
+
+    // Restaura render em tempo real (remove o tempo congelado do último frame)
+    renderer.render(source);
+    onProgress?.(100);
+
+    return new Blob([gif.bytes()], { type: 'image/gif' });
+}
+
+// ── Helpers ──
+/** Inverte as linhas do buffer RGBA (bottom-to-top → top-to-bottom). */
+function flipY(pixels: Uint8Array, width: number, height: number): void {
+    const rowSize = width * 4;
+    const temp = new Uint8Array(rowSize);
+    for (let y = 0; y < Math.floor(height / 2); y++) {
+        const topOffset = y * rowSize;
+        const bottomOffset = (height - 1 - y) * rowSize;
+        temp.set(pixels.subarray(topOffset, topOffset + rowSize));
+        pixels.copyWithin(topOffset, bottomOffset, bottomOffset + rowSize);
+        pixels.set(temp, bottomOffset);
+    }
+}
+
+/** Devolve controle ao browser por um tick (setTimeout 0). */
+function yieldToMain(): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
 
 
 

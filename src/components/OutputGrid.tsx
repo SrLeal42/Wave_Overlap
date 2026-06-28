@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
 import { type OutputGridProps, RenderMode } from '../constants/Output';
 
@@ -8,7 +8,11 @@ import { VignetteEffect } from '../webgl/effects/VignetteEffect';
 
 import '../styles/OutputGrid.css';
 
-export function OutputGrid({
+export interface OutputGridHandle {
+    getRenderer(): WFCRenderer | null;
+}
+
+export const OutputGrid = forwardRef<OutputGridHandle, OutputGridProps>(function OutputGrid({
     source,
     rows,
     cols,
@@ -17,7 +21,11 @@ export function OutputGrid({
     renderMode = RenderMode.RGBAverage,
     colorEffects = [],
     postEffects = [],
-}: OutputGridProps) {
+}, ref) {
+
+    useImperativeHandle(ref, () => ({
+        getRenderer: () => rendererRef.current,
+    }));
 
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const rendererRef = useRef<WFCRenderer | null>(null);
@@ -108,4 +116,5 @@ export function OutputGrid({
             />
         </div>
     );
-}
+
+});

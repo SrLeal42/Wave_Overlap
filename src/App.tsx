@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useWasm } from './wasm/useWasm';
 
 import { DrawingGrid } from './components/DrawingGrid';
-import { OutputGrid } from './components/OutputGrid';
+import { OutputGrid, type OutputGridHandle } from './components/OutputGrid';
 import { HintTip } from './components/HintTip';
 
 import { GRID_COLS, GRID_ROWS, GRID_OUT_ROWS, GRID_OUT_COLS, GRID_PATTERN_SIZE, WFC_MAX_RETRIES } from './constants/Grid';
 import { DEFAULT_PALETTE } from './constants/Grid';
 import { BUILTIN_PRESETS } from './constants/DrawingPreset';
+import { GIF_DEFAULT_NAME } from './constants/GIFExporter';
 import {
   RenderMode, RENDER_MODES, ColorEffect, COLOR_EFFECT_PRESETS,
   DEFAULT_POST_EFFECTS, type PostEffectConfig, type PostEffectType
@@ -18,7 +19,7 @@ import type { DrawingPreset } from './types/DrawingPreset';
 
 import {
   gridToFlat, loadSavedPresets, savePreset, deletePreset, printSavedPresetInterface,
-  cyrb53, generateRandomSeed, encodeShareState, decodeShareState
+  cyrb53, generateRandomSeed, encodeShareState, decodeShareState, exportGif
 } from './utils/Utilities';
 
 
@@ -55,6 +56,10 @@ function App() {
 
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [showCopied, setShowCopied] = useState(false);
+
+  const outputGridRef = useRef<OutputGridHandle>(null);
+  const [isExportingGif, setIsExportingGif] = useState(false);
+  const [gifProgress, setGifProgress] = useState(0);
 
 
   const handleGridChange = (grid: Grid, isUserEdit?: boolean) => {
@@ -202,6 +207,43 @@ function App() {
       setTimeout(() => setShowCopied(false), 2000);
     } catch {
       prompt('Copy this URL:', url);
+    }
+
+  };
+
+  const handleExportGif = async () => {
+    const renderer = outputGridRef.current?.getRenderer();
+
+    if (!renderer || !output) return;
+
+    setIsExportingGif(true);
+    setGifProgress(0);
+
+    try {
+
+      const blob = await exportGif({
+        renderer,
+        source: output,
+        width: GRID_OUT_COLS,
+        height: GRID_OUT_ROWS,
+        onProgress: setGifProgress,
+      });
+
+      // Download automático
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = GIF_DEFAULT_NAME;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[GIF] Export failed:', err);
+    } finally {
+      setIsExportingGif(false);
     }
 
   };
@@ -418,6 +460,7 @@ function App() {
       {/* RIGHT PANEL: Output Grid */}
       <div className="right-panel">
         <OutputGrid
+          ref={outputGridRef}
           source={output}
           rows={GRID_OUT_ROWS}
           cols={GRID_OUT_COLS}
@@ -497,8 +540,8 @@ function App() {
                 {showCopied ? '✓ Copied!' : '⛓ Link'}
               </button>
 
-              <button className="btn-sharp" onClick={() => { /* Futuro: Exportar JPG/GIF */ }}>
-                🖼 JPG / GIF
+              <button className="btn-sharp" onClick={handleExportGif} disabled={isExportingGif || !output || isLive}>
+                {isExportingGif ? `⤓ ${Math.round(gifProgress)}%` : '🖼 GIF'}
               </button>
 
               <button className="btn-sharp" onClick={() => { /* Futuro: Exportar JSON */ }}>

@@ -112,6 +112,11 @@ export class WFCRenderer {
         this.initPostProcessingFBOs(canvas.width, canvas.height);
     }
 
+    public getContext(): WebGL2RenderingContext {
+        return this.gl;
+    }
+
+
     private getUniform(name: string): WebGLUniformLocation {
         const loc = this.gl.getUniformLocation(this.program, name);
         if (loc === null) {
@@ -219,7 +224,7 @@ export class WFCRenderer {
      * Renderiza um frame.
      * Chamado a cada rAF — faz upload do bitmask SAB como textura e desenha.
      */
-    render(sabView: Uint8Array | Uint16Array): void {
+    render(sabView: Uint8Array | Uint16Array, overrideTime?: number): void {
 
         if (this.destroyed) return;
 
@@ -239,7 +244,9 @@ export class WFCRenderer {
         );
         // 2. Atualiza tempo (para modo animado + per-color effects)
         gl.useProgram(this.program);
-        const elapsed = performance.now() / 1000 - this.startTime;
+        const elapsed = overrideTime !== undefined
+            ? overrideTime
+            : (performance.now() / 1000 - this.startTime);
         gl.uniform1f(this.uTime, elapsed);
 
         // 3. Determina se há post-effects ativos
