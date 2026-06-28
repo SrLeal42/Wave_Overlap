@@ -19,7 +19,7 @@ import type { DrawingPreset } from './types/DrawingPreset';
 
 import {
   gridToFlat, loadSavedPresets, savePreset, deletePreset, printSavedPresetInterface,
-  cyrb53, generateRandomSeed, encodeShareState, decodeShareState, exportGif
+  cyrb53, generateRandomSeed, encodeShareState, decodeShareState, exportGif, exportTilemap
 } from './utils/Utilities';
 
 
@@ -247,6 +247,37 @@ function App() {
     }
 
   };
+
+  const handleExportJson = () => {
+    if (!output) return;
+
+    const data = exportTilemap(
+      output as Uint16Array,
+      GRID_OUT_ROWS,
+      GRID_OUT_COLS,
+      DEFAULT_PALETTE,
+      seedText,
+      symmetry,
+      GRID_PATTERN_SIZE,
+      GRID_ROWS,
+      GRID_COLS,
+    );
+
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'wave_overlap.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    URL.revokeObjectURL(url);
+  };
+
 
 
   const togglePostEffect = (type: PostEffectType) => {
@@ -544,7 +575,7 @@ function App() {
                 {isExportingGif ? `⤓ ${Math.round(gifProgress)}%` : '🖼 GIF'}
               </button>
 
-              <button className="btn-sharp" onClick={() => { /* Futuro: Exportar JSON */ }}>
+              <button className="btn-sharp" onClick={handleExportJson} disabled={!output || isLive}>
                 {'{ }'} JSON
               </button>
             </div>

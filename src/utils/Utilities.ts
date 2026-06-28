@@ -1,13 +1,15 @@
 import { GIFEncoder, quantize, applyPalette } from 'gifenc';
 
-import type { Grid, CellValue } from '../types/Grid';
+import type { Grid, CellValue, PaletteColor } from '../types/Grid';
 import type { DrawingPreset } from '../types/DrawingPreset';
 import type { DecodedShareState } from '../types/SharedPayload';
 import type { GifExportOptions } from '../types/GIFExporter';
+import type { TilemapExportData } from '../types/TilemapExport';
 
 import type { ColorEffect, PostEffectConfig } from '../constants/Output';
 import { STORAGE_KEY } from '../constants/DrawingPreset';
 import { GIF_FPS, GIF_DURATION, GIF_TIME_SCALE, GIF_MAX_COLORS, YIELD_INTERVAL } from '../constants/GIFExporter';
+import { JSON_VERSION_NUMBER } from '../constants/TilemapExport';
 
 /**
  * Achata um Grid 2D para Uint8Array (row-major).
@@ -472,5 +474,48 @@ function yieldToMain(): Promise<void> {
 
 
 
+/**
+ * Converte o output do WFC (bitmask) para um JSON de tilemap exportável.
+ * Células não-colapsadas (múltiplos bits) são marcadas como -1.
+ */
+export function exportTilemap(
+    output: Uint16Array,
+    rows: number,
+    cols: number,
+    palette: PaletteColor[],
+    seed: string,
+    symmetry: boolean,
+    patternSize: number,
+    inputRows: number,
+    inputCols: number,
+): TilemapExportData {
+
+    const tilemap: number[] = new Array(rows * cols);
+
+    for (let i = 0; i < output.length; i++) {
+        const mask = output[i];
+        // mask === 0: erro (sem possibilidades)
+        // mask & (mask - 1) !== 0: múltiplos bits setados (não colapsado)
+        if (mask === 0 || (mask & (mask - 1)) !== 0) {
+            tilemap[i] = -1;
+        } else {
+            tilemap[i] = Math.log2(mask);
+        }
+    }
+
+    return {
+        version: JSON_VERSION_NUMBER,
+        dimensions: { width: cols, height: rows },
+        palette: palette.map(p => ({ index: p.index, hex: p.hex, label: p.label })),
+        tilemap,
+        metadata: {
+            seed,
+            symmetry,
+            patternSize,
+            inputSize: { rows: inputRows, cols: inputCols },
+        },
+    };
+
+}
 
 
