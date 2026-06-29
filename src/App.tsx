@@ -51,6 +51,11 @@ function App() {
   const [seedText, setSeedText] = useState('');
   const [randomSeedBool, setRandomSeedBool] = useState(false);
 
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(() => {
+    // Só abre o modal se NÃO houver um link de compartilhamento ('s') na URL
+    return !new URLSearchParams(window.location.search).has('s');
+  });
+
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [saveDrawingName, setSaveDrawingName] = useState('');
 
@@ -585,6 +590,71 @@ function App() {
         </div>
 
       )}
+
+      {/* Modal de Informações */}
+      {isInfoModalOpen && (
+
+        <div className="modal-overlay" onClick={() => setIsInfoModalOpen(false)}>
+
+          <div className="modal-content modal-info" onClick={(e) => e.stopPropagation()}>
+
+            <div className="modal-header">
+              <h3>Wave Overlap</h3>
+              <button className="btn-sharp" onClick={() => setIsInfoModalOpen(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+
+              <p>
+                Welcome to <strong>Wave Overlap</strong>! This tool lets you generate complex,
+                larger images from a simple drawing using the <strong>Wave Function Collapse</strong> algorithm.
+              </p>
+
+              <h4>◈ How to use</h4>
+              <ul>
+                <li><strong>Draw:</strong> Use the left canvas to create a small pattern.</li>
+                <li><strong>Configure:</strong> Adjust grid size, colors, or apply symmetry.</li>
+                <li><strong>Generate:</strong> Click the play button to watch the algorithm build a new image based on your rules!</li>
+              </ul>
+
+              <h4>⟡ Features</h4>
+              <ul>
+                <li><strong>Live Preview</strong> — Watch the generation unfold in real time.</li>
+                <li><strong>Share & Export</strong> — Save as GIF, share a link, or export to JSON.</li>
+              </ul>
+
+              <p style={{ fontSize: '0.75rem', color: '#283b2b', marginTop: '1rem' }}>
+                Built with React 19 · Go · WebAssembly · WebGL2 <br />
+                <a href="https://github.com/SrLeal42/Wave_Overlap" target="_blank" rel="noopener noreferrer">
+                  View Source on GitHub
+                </a>
+              </p>
+
+            </div>
+
+
+            <div className="modal-actions">
+              <button className="btn-sharp btn-generate" onClick={() => setIsInfoModalOpen(false)}>
+                Got it
+              </button>
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
+      {/* Botão flutuante para o modal de info */}
+      {!isInfoModalOpen && (
+        <button
+          className="info-fab"
+          onClick={() => setIsInfoModalOpen(true)}
+          title="About this project"
+        >
+          ?
+        </button>
+      )}
+
 
 
 
