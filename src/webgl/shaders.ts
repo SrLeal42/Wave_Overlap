@@ -161,6 +161,72 @@ void main() {
 
 
 
+export const SCANLINE_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uInputTex;
+uniform float uLineCount;
+uniform float uOpacity;
+uniform float uTime;
+uniform float uSpeed;
+
+void main() {
+    vec3 color = texture(uInputTex, vUV).rgb;
+
+    // Scroll: linhas descem com o tempo (velocidade = 0.5 ciclos/seg)
+    float line = fract(vUV.y * uLineCount - uTime * uSpeed);
+    float scanline = smoothstep(0.0, 0.15, line) * smoothstep(1.0, 0.85, line);
+
+    color *= mix(1.0 - uOpacity, 1.0, scanline);
+
+    fragColor = vec4(color, 1.0);
+}
+
+`;
+
+
+
+export const BARREL_SHADER = `#version 300 es
+precision highp float;
+
+in vec2 vUV;
+out vec4 fragColor;
+
+uniform sampler2D uInputTex;
+uniform float uStrength;
+uniform float uZoom;
+
+void main() {
+    // Centraliza em -1..1
+    vec2 uv = vUV * 2.0 - 1.0;
+    
+    // Distância ao centro, quadrada
+    float r2 = dot(uv, uv);
+    
+    // Barrel: pixels das bordas amostram mais perto do centro
+    uv *= 1.0 + uStrength * r2;
+    
+    // Zoom compensatório + volta para 0..1
+    uv = (uv / uZoom) * 0.5 + 0.5;
+    
+    // Fora dos limites → preto (bordas da curvatura)
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        fragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        return;
+    }
+    
+    fragColor = vec4(texture(uInputTex, uv).rgb, 1.0);
+}
+
+`;
+
+
+
+
+
 
 export const FRAGMENT_SHADER = `#version 300 es
 precision highp float;

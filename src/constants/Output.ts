@@ -109,8 +109,18 @@ export const BLOOM_INTENSITY = 0.5;
 export const VIGNETTE_RADIUS = 0.95;
 export const VIGNETTE_SOFTNESS = 0.65;
 
+export const SCANLINE_COUNT = 48.0;   // número de pares de linhas no eixo Y
+export const SCANLINE_OPACITY = .3;   // 0=invisível, 1=totalmente opaco
+export const SCANLINE_SPEED = 1.0;    // ciclos por segundo de scroll
+
+export const BARREL_STRENGTH = 0.1;    // intensidade da curvatura (0=sem, >0=barrel)
+export const BARREL_ZOOM = 1;    // zoom compensatório para preencher bordas
+
+
 export const PostEffectType = {
     Bloom: 'bloom',
+    Scanlines: 'scanlines',
+    // Barrel: 'barrel',
     Vignette: 'vignette',
 } as const;
 export type PostEffectType = typeof PostEffectType[keyof typeof PostEffectType];
@@ -121,8 +131,12 @@ export interface PostEffectConfig {
     params: Record<string, number>;
 }
 
+export const ANIMATED_POST_EFFECTS = new Set(['scanlines']);
+
 export const DEFAULT_POST_EFFECTS: PostEffectConfig[] = [
     { type: 'bloom', enabled: true, params: { threshold: BLOOM_THRESHOLD, intensity: BLOOM_INTENSITY } },
+    { type: 'scanlines', enabled: false, params: { lineCount: SCANLINE_COUNT, opacity: SCANLINE_OPACITY, speed: SCANLINE_SPEED } },
+    // { type: 'barrel', enabled: false, params: { strength: BARREL_STRENGTH, zoom: BARREL_ZOOM } },
     { type: 'vignette', enabled: false, params: { radius: VIGNETTE_RADIUS, softness: VIGNETTE_SOFTNESS } },
 ];
 

@@ -1,10 +1,12 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react';
 
-import { type OutputGridProps, RenderMode } from '../constants/Output';
+import { type OutputGridProps, RenderMode, ANIMATED_POST_EFFECTS } from '../constants/Output';
 
 import { WFCRenderer } from '../webgl/renderer';
 import { BloomEffect } from '../webgl/effects/BloomEffect';
 import { VignetteEffect } from '../webgl/effects/VignetteEffect';
+import { ScanlineEffect } from '../webgl/effects/ScanlineEffect';
+import { BarrelEffect } from '../webgl/effects/BarrelEffect';
 
 import '../styles/OutputGrid.css';
 
@@ -31,7 +33,9 @@ export const OutputGrid = forwardRef<OutputGridHandle, OutputGridProps>(function
     const rendererRef = useRef<WFCRenderer | null>(null);
     const rafIdRef = useRef<number>(0);
 
-    const needsAnimation = live || colorEffects.some(e => e !== 0);
+    const needsAnimation = live
+        || colorEffects.some(e => e !== 0)
+        || postEffects.some(e => e.enabled && ANIMATED_POST_EFFECTS.has(e.type));
 
     // Inicializa o WFCRenderer quando o canvas monta ou grid size muda
     useEffect(() => {
@@ -43,6 +47,8 @@ export const OutputGrid = forwardRef<OutputGridHandle, OutputGridProps>(function
 
             // Registra post-effects
             renderer.addPostEffect(new BloomEffect());
+            renderer.addPostEffect(new ScanlineEffect());
+            renderer.addPostEffect(new BarrelEffect());
             renderer.addPostEffect(new VignetteEffect());
 
             rendererRef.current = renderer;
@@ -104,7 +110,7 @@ export const OutputGrid = forwardRef<OutputGridHandle, OutputGridProps>(function
 
         return () => cancelAnimationFrame(rafIdRef.current);
 
-    }, [needsAnimation, source]);
+    }, [needsAnimation, source, postEffects]);
 
     return (
         <div className="output-grid-container">
